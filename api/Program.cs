@@ -161,6 +161,20 @@ builder.Services.AddCors(options =>
 	});
 });
 
+builder.Services.Configure<RabbitMqSettings>(
+	builder.Configuration.GetSection("RabbitMQ")
+);
+
+builder.Services.AddSingleton<IRabbitMqService>(provider =>
+{
+	var settings = provider.GetRequiredService<IOptions<RabbitMqSettings>>().Value;
+	return RabbitMqService.CreateAsync(
+		settings.Host,
+		settings.UserName,
+		settings.Password
+	).GetAwaiter().GetResult();
+});
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
