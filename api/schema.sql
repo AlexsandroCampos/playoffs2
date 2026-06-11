@@ -83,6 +83,20 @@ CREATE TABLE IF NOT EXISTS errorlog (
     timeoferror TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS outbox_events (
+    id BIGSERIAL PRIMARY KEY,
+    event_type VARCHAR(150) NOT NULL,
+    payload_json JSONB NOT NULL,
+    occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    status VARCHAR(20) NOT NULL DEFAULT 'Pending',
+    attempts INT NOT NULL DEFAULT 0,
+    published_at TIMESTAMPTZ NULL,
+    last_error TEXT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS ix_outbox_events_status_id ON outbox_events (status, id);
+
 -- Relacionamentos e apoio
 
 CREATE TABLE IF NOT EXISTS championships_teams (

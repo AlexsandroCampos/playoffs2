@@ -11,8 +11,22 @@ public class EmailService
 
     public static bool SendEmailPasswordReset(string userEmail, string userName, string link)
     {
+        if (string.IsNullOrWhiteSpace(Email) || string.IsNullOrWhiteSpace(Senha))
+        {
+            Console.Error.WriteLine("Email client or password not configured. Skipping sending email.");
+            return false;
+        }
+
         var mailMessage = new MailMessage();
-        mailMessage.From = new MailAddress(Email);
+        try
+        {
+            mailMessage.From = new MailAddress(Email);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine("Invalid email configuration: " + ex.Message);
+            return false;
+        }
         mailMessage.To.Add(new MailAddress(userEmail));
         mailMessage.Subject = Resource.SendEmailPasswordResetRedefinicaoSenha;
         mailMessage.IsBodyHtml = true;
@@ -51,8 +65,22 @@ public class EmailService
 
     public static bool SendConfirmationEmail(string userEmail, string userName, string link)
     {
+        if (string.IsNullOrWhiteSpace(Email) || string.IsNullOrWhiteSpace(Senha))
+        {
+            Console.Error.WriteLine("Email client or password not configured. Skipping sending email.");
+            return false;
+        }
+
         var mailMessage = new MailMessage();
-        mailMessage.From = new MailAddress(Email);
+        try
+        {
+            mailMessage.From = new MailAddress(Email);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine("Invalid email configuration: " + ex.Message);
+            return false;
+        }
         mailMessage.To.Add(new MailAddress(userEmail));
         mailMessage.Subject = Resource.SendConfirmationEmailConfirmacaoDeEmail;
         mailMessage.IsBodyHtml = true;

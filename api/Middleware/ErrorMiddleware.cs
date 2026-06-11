@@ -24,18 +24,26 @@ public class ErrorMiddleware
         }
         catch (Exception ex)
         {
-            var errorLogService = context.RequestServices.GetRequiredService<ErrorLogService>();
-            await errorLogService.HandleExceptionValidationAsync(context, ex);
-            
-            context.Response.StatusCode = 500; 
+            try
+            {
+                var errorLogService = context.RequestServices.GetRequiredService<ErrorLogService>();
+                await errorLogService.HandleExceptionValidationAsync(context, ex);
+            }
+            catch (Exception logEx)
+            {
+                Console.Error.WriteLine("Failed to write error to errorlog: " + logEx);
+                Console.Error.WriteLine("Original exception: " + ex);
+            }
+
+            context.Response.StatusCode = 500;
             context.Response.ContentType = "application/json";
-    
+
             var response = new ApiResponse<string>
             {
                 Succeed = false,
                 Message = Resource.GenericErrorMessage
             };
-            
+
             var responseString = JsonSerializer.Serialize(response);
             await context.Response.WriteAsync(responseString);
         }

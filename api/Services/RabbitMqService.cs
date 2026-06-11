@@ -7,7 +7,6 @@ namespace PlayOffsApi.Services
     public interface IRabbitMqService
     {
         Task PublishMessageAsync(string message);
-        Task<string> ConsumeMessageAsync();
         Task DisposeAsync();
     }
 
@@ -16,22 +15,24 @@ namespace PlayOffsApi.Services
         private IConnection _connection;
         private IChannel _channel;
         private readonly string _hostName;
+        private readonly int _port;
         private readonly string _userName;
         private readonly string _password;
         private readonly string _exchangeName = "playoffs-exchange";
         private readonly string _queueName = "playoffs-queue";
-        private readonly string _routingKey = "playoffs.*";
+        private readonly string _routingKey = "playoffs.event";
 
-        private RabbitMqService(string hostName, string userName, string password)
+        private RabbitMqService(string hostName, int port, string userName, string password)
         {
             _hostName = hostName;
+            _port = port;
             _userName = userName;
             _password = password;
         }
 
-        public static async Task<RabbitMqService> CreateAsync(string hostName, string userName, string password)
+        public static async Task<RabbitMqService> CreateAsync(string hostName, int port, string userName, string password)
         {
-            var service = new RabbitMqService(hostName, userName, password);
+            var service = new RabbitMqService(hostName, port, userName, password);
             await service.InitializeAsync();
             return service;
         }
@@ -41,6 +42,7 @@ namespace PlayOffsApi.Services
             var factory = new ConnectionFactory() 
             { 
                 HostName = _hostName, 
+                Port = _port,
                 UserName = _userName, 
                 Password = _password 
             };
@@ -85,25 +87,11 @@ namespace PlayOffsApi.Services
 
             await _channel.BasicPublishAsync(
                 exchange: _exchangeName,
-                routingKey: "playoffs.event",
+                routingKey: _routingKey,
                 mandatory: false,
                 basicProperties: properties,
                 body: body
             );
-        }
-
-        // Usado no worker para consumir mensagens da fila
-        public async Task<string> ConsumeMessageAsync()
-        {
-            var result = await _channel.BasicGetAsync(queue: _queueName, autoAck: true);
-            
-            if (result != null)
-            {
-                var message = System.Text.Encoding.UTF8.GetString(result.Body.ToArray());
-                return message;
-            }
-            
-            return null;
         }
 
         public async Task DisposeAsync()

@@ -98,12 +98,19 @@ public class AuthService
 
 		newUser.Id = await RegisterUserAsync(newUser);
 		
-		if (newUser.Role != "admin" && Environment.GetEnvironmentVariable("IS_DEVELOPMENT") != "true")
+		if (newUser.Role != "admin" && !IsDevelopmentMode())
 			await SendEmailToConfirmAccount(newUser.Id);
 		else
 			newUser.ConfirmEmail = true;
 		
-		await _elastic._client.IndexAsync(newUser, _index);
+		try
+		{
+			await _elastic._client.IndexAsync(newUser, _index);
+		}
+		catch (Exception ex)
+		{
+			_logger.LogWarning(ex, "Elasticsearch indexing failed for new user {Username}", newUser.Username);
+		}
 		resultId.Add(newUser.Id.ToString());
 
 		return resultId;
@@ -280,6 +287,12 @@ public class AuthService
 		await SendEmailToResetPassword(actualUser.Id);
 		errorMessages.Add(actualUser.Id.ToString());
 		return errorMessages;
+	}
+
+	private static bool IsDevelopmentMode()
+	{
+		return string.Equals(Environment.GetEnvironmentVariable("IS_DEVELOPMENT"), "true", StringComparison.OrdinalIgnoreCase)
+			|| string.Equals(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"), "Development", StringComparison.OrdinalIgnoreCase);
 	}
 
 	public async Task SendEmailToResetPassword(Guid userId)

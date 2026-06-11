@@ -86,7 +86,7 @@ public class AuthController : ApiBaseController
 			if (user.Id == Guid.Empty)
 				return ApiUnauthorizedRequest(Resource.GenerateTokenNomeInvalido);
 			
-			if (!user.ConfirmEmail)
+			if (!user.ConfirmEmail && !IsDevelopmentMode())
 				return ApiUnauthorizedRequest(Resource.GenerateTokenConfirmeEmail);
 
 			var jwt = _authService.GenerateJwtToken(user.Id, user.Email, _expires, user.Role);
@@ -110,6 +110,12 @@ public class AuthController : ApiBaseController
 			await _error.HandleExceptionValidationAsync(HttpContext, ex);
 			return ApiBadRequest(ex.Message, GenericError.GenericErrorMessage);
 		}
+	}
+
+	private static bool IsDevelopmentMode()
+	{
+		return string.Equals(Environment.GetEnvironmentVariable("IS_DEVELOPMENT"), "true", StringComparison.OrdinalIgnoreCase)
+			|| string.Equals(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"), "Development", StringComparison.OrdinalIgnoreCase);
 	}
 
 	/// <summary>

@@ -69,9 +69,11 @@ builder.Services.AddControllers();
 
 builder.Services.AddSingleton(jwtSettings);
 builder.Services.AddHostedService<BackgroundJobs>();
+builder.Services.AddHostedService<OutboxPublisherHostedService>();
 builder.Services.AddSingleton<IBackgroundJobsService, BackgroundJobs>();
 builder.Services.AddSingleton<RedisService>();
 builder.Services.AddScoped<DbService>();
+builder.Services.AddSingleton<IOutboxEventRepository, OutboxEventRepository>();
 builder.Services.AddScoped<ChampionshipService>();
 builder.Services.AddSingleton<ElasticService>();
 builder.Services.AddScoped<TeamService>();
@@ -170,6 +172,7 @@ builder.Services.AddSingleton<IRabbitMqService>(provider =>
 	var settings = provider.GetRequiredService<IOptions<RabbitMqSettings>>().Value;
 	return RabbitMqService.CreateAsync(
 		settings.Host,
+		settings.Port,
 		settings.UserName,
 		settings.Password
 	).GetAwaiter().GetResult();

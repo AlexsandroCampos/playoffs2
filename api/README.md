@@ -14,6 +14,7 @@ $env:ASPNETCORE_ENVIRONMENT="Development"
 $env:MOUNT_PATH="C:/playoffs/uploads" -> caminho de uma pasta que vc precisa criar
 $env:CAPTCHA_KEY="SUA_CHAVE_RECAPTCHA"
 $env:SUPER_SECRET_PASSWORD="SENHA_ADMIN_LOCAL"
+$env:RabbitMQ__Host="localhost"
 
 Subir PostgreSQL, Redis e Elasticsearch com Docker:
 No PowerShell, execute:

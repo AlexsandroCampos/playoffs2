@@ -1267,7 +1267,7 @@ public class MatchService
         match.Date = match.Date.ToUniversalTime();
         var championship = await GetByIdSend(oldMatch.ChampionshipId);
 
-        if(championship.InitialDate.ToUniversalTime() > match.Date.Date || championship.FinalDate.ToUniversalTime() < match.Date.Date)
+        if(championship.InitialDate.ToUniversalTime().Date > match.Date.Date || championship.FinalDate.ToUniversalTime().Date < match.Date.Date)
             throw new ApplicationException("Partida não pode ser anterior ou posterior ao seu campeonato");
 
         if(oldMatch.Tied == true || oldMatch.Winner != 0)

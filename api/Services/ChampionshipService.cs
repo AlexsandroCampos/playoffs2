@@ -31,8 +31,8 @@ public class ChampionshipService
 		_redisService = redisService;
 		_organizerService = organizerService;
         _logger = logger;
-        var isDevelopment = Environment.GetEnvironmentVariable("IS_DEVELOPMENT");
-        _index = isDevelopment == "false" ? "championships" : "championships-dev";
+		var isDevelopment = Environment.GetEnvironmentVariable("IS_DEVELOPMENT");
+		_index = isDevelopment == "true" ? "championships-dev" : "championships";
 	}
 	public async Task<List<string>> CreateValidationAsync(Championship championship)
 	{
@@ -176,7 +176,7 @@ public class ChampionshipService
 	}
 
 	private async Task<Championship> GetByIdSend(int id) 
-		=> await _dbService.GetAsync<Championship>("SELECT id, name, sportsid, initialdate, finaldate, rules, logo, description, format, organizerid, teamquantity, doublematchgroupstage, doublematcheliminations, doublestartleaguesystem, finaldoublematch, deleted FROM championships WHERE id = @id", new { id });
+		=> await _dbService.GetAsync<Championship>("SELECT id, name, sportsid, initialdate, finaldate, rules, logo, description, format, organizerid, teamquantity, doublematchgroupstage, doublematcheliminations, doublestartleaguesystem, finaldoublematch, deleted, status FROM championships WHERE id = @id", new { id });
 	
 	private async Task<int> GetNumberOfPlayers(int championshipId)
 		=> await _dbService.GetAsync<int>("SELECT numberofplayers FROM championships WHERE id = @championshipId", new {championshipId});

@@ -67,13 +67,18 @@ public class BackgroundJobs : BackgroundService, IBackgroundJobsService
         await _subscription.SubscribeToChannelsAsync("jobs");
     }
 
-    private void ExecuteBackgroundJob(BackgroundJob jobDeserialized)
+    private async Task ExecuteBackgroundJob(BackgroundJob jobDeserialized)
     {
         var paramList = (from param in jobDeserialized.Params
             let type = Type.GetType(param.Type)
             select param.Value.Deserialize(type!)).ToArray();
 
-        GetType().GetMethod(jobDeserialized.MethodName)!.Invoke(this, paramList);
+        var methodInfo = GetType().GetMethod(jobDeserialized.MethodName);
+        if (methodInfo != null)
+        {
+            var task = (Task)methodInfo.Invoke(this, paramList);
+            await task; // AQUI ESTÁ A MÁGICA: Aguarda a execução e expõe erros!
+        }
     }
 
     public async Task EnqueueJob(Expression<Func<Task>> methodExpression, TimeSpan? period = null)
@@ -118,30 +123,38 @@ public class BackgroundJobs : BackgroundService, IBackgroundJobsService
     {
         var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         await using var database = await _redisService.GetDatabase();
+
+        // 1. Aguarda a busca terminar PRIMEIRO
+        var fetchedJobs = await database.GetRangeFromSortedSetByLowestScoreAsync("scheduled_jobs", double.NegativeInfinity, now, _cts);
         
-        var jobsTask = database.GetRangeFromSortedSetByLowestScoreAsync("scheduled_jobs", double.NegativeInfinity, now, _cts);
-        var removalTask = database.RemoveRangeFromSortedSetByScoreAsync("scheduled_jobs", double.NegativeInfinity, now, _cts);
-        
-        var fetchedJobs = await jobsTask;
-        await removalTask; 
+        // 2. Só então dispara e aguarda a remoção
+        await database.RemoveRangeFromSortedSetByScoreAsync("scheduled_jobs", double.NegativeInfinity, now, _cts);
 
         var jobs = fetchedJobs.Select(job => JsonSerializer.Deserialize<BackgroundJob>(job)).Where(backgroundJob => backgroundJob is not null).ToList();
         _logger.LogInformation("Quantidade de jobs: {jobsCount}", jobs.Count);
         
         foreach (var job in jobs)  
         {
-            ExecuteBackgroundJob(job);
+            await ExecuteBackgroundJob(job);
         }
     }
-    
     private async Task ExecutePeriodicallyAsync()
+{
+    while (true)
     {
-        while (true)
+        try 
         {
             await DequeueDueJobsAsync();
-            await Task.Delay(TimeSpan.FromHours(4), _cts);
         }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Erro no processamento dos jobs. O loop vai tentar novamente.");
+        }
+        
+        // await Task.Delay(TimeSpan.FromHours(4), _cts);
+        await Task.Delay(TimeSpan.FromSeconds(10), _cts);
     }
+}
 
     public async Task ChangeChampionshipStatusValidation(int championshipId, int status)
     {
@@ -154,13 +167,21 @@ public class BackgroundJobs : BackgroundService, IBackgroundJobsService
         await using var database = await _redisService.GetDatabase();
         
         var cancelJob = await database.GetValueAsync($"cancelJob_championship:{championshipId}", _cts);
-        var championship = await dbService.GetAsync<Championship>("SELECT * FROM championships WHERE id = @id", new { championshipId });
+        var championship = await dbService.GetAsync<Championship>("SELECT * FROM championships WHERE id = @id", new { id = championshipId });
 
         _logger.LogInformation(cancelJob);
         _logger.LogInformation("Data de início do camp: " + championship.InitialDate);
 
         if (cancelJob is not null)
-            if (DateTime.Parse(cancelJob) != championship.InitialDate) return;
+        {
+            if (DateTime.Parse(cancelJob) != championship.InitialDate) 
+            {
+                // Se as datas são diferentes, significa que a data mudou e o job atual é o antigo (que deve ser cancelado).
+                // Então deletamos a chave do Redis para não bloquear o job NOVO que ainda vai rodar.
+                await database.RemoveAsync($"cancelJob_championship:{championshipId}");
+                return; 
+            }
+        }
 
         var statusEnum = (ChampionshipStatus)status;
 
@@ -178,7 +199,17 @@ public class BackgroundJobs : BackgroundService, IBackgroundJobsService
         championship.Status = statusEnum;
         
         var isDevelopment = Environment.GetEnvironmentVariable("IS_DEVELOPMENT");
-        await elasticService._client.IndexAsync(championship, string.IsNullOrEmpty(isDevelopment) || isDevelopment == "false" ? "championships" : "championships-dev", _cts);
+        var indexName = isDevelopment == "true" ? "championships-dev" : "championships";
+        var response = await elasticService._client.IndexAsync(championship, indexName, _cts);
+
+        if (!response.IsValidResponse)
+        {
+            _logger.LogError("ERRO NO ELASTICSEARCH: " + response.DebugInformation);
+        }
+        else
+        {
+            _logger.LogInformation("Elasticsearch atualizado com status 0 com sucesso!");
+        }
     }
 
     private static async Task ChangeChampionshipStatusSend(int championshipId, ChampionshipStatus status, DbService dbService) 

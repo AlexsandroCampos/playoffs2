@@ -8,6 +8,7 @@ namespace PlayOffsApi.Services;
 public class DbService
 {
 	private readonly IDbConnection _db;
+	private readonly string _connectionString;
 
 	public DbService(IConfiguration configuration, IWebHostEnvironment environment)
 	{
@@ -25,7 +26,27 @@ public class DbService
 		}
 		else connectionString = configuration.GetConnectionString("LOCALHOST");
 
+		_connectionString = connectionString;
 		_db = new NpgsqlConnection(connectionString);
+	}
+
+	public async Task<T> ExecuteInTransactionAsync<T>(Func<NpgsqlConnection, NpgsqlTransaction, Task<T>> action)
+	{
+		await using var connection = new NpgsqlConnection(_connectionString);
+		await connection.OpenAsync();
+		await using var transaction = await connection.BeginTransactionAsync();
+
+		try
+		{
+			var result = await action(connection, transaction);
+			await transaction.CommitAsync();
+			return result;
+		}
+		catch
+		{
+			await transaction.RollbackAsync();
+			throw;
+		}
 	}
 
 	public async Task<T> GetAsync<T>(string command, object parms)

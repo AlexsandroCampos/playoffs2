@@ -1,12 +1,16 @@
+using Dapper;
 using FluentValidation;
 using PlayOffsApi.Enum;
 using PlayOffsApi.Models;
 using PlayOffsApi.Validations;
+using System.Text.Json;
+using Npgsql;
 
 namespace PlayOffsApi.Services;
 
 public class GoalService
 {
+    private const string GoalScoredEventType = "goal.scored";
     private readonly DbService _dbService;
     private readonly BracketingService _bracketingService;
     public GoalService(DbService dbService, BracketingService bracketingService)
@@ -251,50 +255,109 @@ public class GoalService
         => await _dbService.GetAsync<bool>("SELECT EXISTS(SELECT * FROM penalties WHERE MatchId = @matchId)", new {matchId});
     private async Task<int> CreateGoalToPlayerTempSend(Goal goal)
     {
-        var id = 0;
-        if(goal.AssisterPlayerId == Guid.Empty && goal.AssisterPlayerTempId != Guid.Empty)
-        {
-            id = await _dbService.EditData(
-			"INSERT INTO goals (MatchId, TeamId, PlayerId, PlayerTempId, Set, OwnGoal, AssisterPlayerTempId, AssisterPlayerId, Minutes, Date) VALUES (@MatchId, @TeamId, null, @PlayerTempId, @Set, @OwnGoal, @AssisterPlayerTempId, null, @Minutes, @Date) RETURNING Id;",
-			goal);
-        }
-        else if(goal.AssisterPlayerId != Guid.Empty)
-        {
-            id = await _dbService.EditData(
-			"INSERT INTO goals (MatchId, TeamId, PlayerId, PlayerTempId, Set, OwnGoal, AssisterPlayerId, AssisterPlayerTempId, Minutes, Date) VALUES (@MatchId, @TeamId, null, @PlayerTempId, @Set, @OwnGoal, @AssisterPlayerId, null, @Minutes, @Date) RETURNING Id;",
-			goal);
-        }
-        else
-        {
-            id = await _dbService.EditData(
-			"INSERT INTO goals (MatchId, TeamId, PlayerId, PlayerTempId, Set, OwnGoal, AssisterPlayerId, AssisterPlayerTempId, Minutes, Date) VALUES (@MatchId, @TeamId, null, @PlayerTempId, @Set, @OwnGoal, null, null, @Minutes, @Date) RETURNING Id;",
-			goal);
-        }
-        return id;
+        return await CreateGoalAndOutboxAsync(goal, playerIsTemp: true);
     }
         
     private async Task<int> CreateGoalToPlayerSend(Goal goal)
     {
-        var id = 0;
-        if(goal.AssisterPlayerId == Guid.Empty && goal.AssisterPlayerTempId != Guid.Empty)
+        return await CreateGoalAndOutboxAsync(goal, playerIsTemp: false);
+    }
+
+    private async Task<int> CreateGoalAndOutboxAsync(Goal goal, bool playerIsTemp)
+    {
+        return await _dbService.ExecuteInTransactionAsync(async (connection, transaction) =>
         {
-            id = await _dbService.EditData(
-			"INSERT INTO goals (MatchId, TeamId, PlayerId, PlayerTempId, Set, OwnGoal, AssisterPlayerTempId, AssisterPlayerId, Minutes, Date) VALUES (@MatchId, @TeamId, @PlayerId, null, @Set, @OwnGoal, @AssisterPlayerTempId, null, @Minutes, @Date) RETURNING Id;",
-			goal);
+            var goalId = await InsertGoalAsync(connection, transaction, goal, playerIsTemp);
+            var championshipId = await GetChampionshipIdByMatchIdAsync(connection, transaction, goal.MatchId);
+
+            var payloadJson = JsonSerializer.Serialize(new
+            {
+                goalId,
+                matchId = goal.MatchId,
+                championshipId,
+                teamId = goal.TeamId,
+                playerId = goal.PlayerId == Guid.Empty ? (Guid?)null : goal.PlayerId,
+                playerTempId = goal.PlayerTempId == Guid.Empty ? (Guid?)null : goal.PlayerTempId,
+                assisterPlayerId = goal.AssisterPlayerId == Guid.Empty ? (Guid?)null : goal.AssisterPlayerId,
+                assisterPlayerTempId = goal.AssisterPlayerTempId == Guid.Empty ? (Guid?)null : goal.AssisterPlayerTempId,
+                set = goal.Set,
+                ownGoal = goal.OwnGoal,
+                minutes = goal.Minutes,
+                date = goal.Date,
+                occurredAtUtc = DateTime.UtcNow
+            });
+
+            const string outboxSql = @"
+INSERT INTO outbox_events (event_type, payload_json, occurred_at, status)
+VALUES (@eventType, @payloadJson::jsonb, @occurredAtUtc, 'Pending')
+RETURNING id;";
+
+            await connection.ExecuteScalarAsync<long>(
+                outboxSql,
+                new
+                {
+                    eventType = GoalScoredEventType,
+                    payloadJson,
+                    occurredAtUtc = DateTime.UtcNow
+                },
+                transaction);
+
+            return goalId;
+        });
+    }
+
+    private static async Task<int> InsertGoalAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Goal goal, bool playerIsTemp)
+    {
+        if (playerIsTemp)
+        {
+            if (goal.AssisterPlayerId == Guid.Empty && goal.AssisterPlayerTempId != Guid.Empty)
+            {
+                return await connection.ExecuteScalarAsync<int>(
+				"INSERT INTO goals (MatchId, TeamId, PlayerId, PlayerTempId, Set, OwnGoal, AssisterPlayerTempId, AssisterPlayerId, Minutes, Date) VALUES (@MatchId, @TeamId, null, @PlayerTempId, @Set, @OwnGoal, @AssisterPlayerTempId, null, @Minutes, @Date) RETURNING Id;",
+				goal,
+				transaction);
+            }
+
+            if (goal.AssisterPlayerId != Guid.Empty)
+            {
+                return await connection.ExecuteScalarAsync<int>(
+				"INSERT INTO goals (MatchId, TeamId, PlayerId, PlayerTempId, Set, OwnGoal, AssisterPlayerId, AssisterPlayerTempId, Minutes, Date) VALUES (@MatchId, @TeamId, null, @PlayerTempId, @Set, @OwnGoal, @AssisterPlayerId, null, @Minutes, @Date) RETURNING Id;",
+				goal,
+				transaction);
+            }
+
+            return await connection.ExecuteScalarAsync<int>(
+				"INSERT INTO goals (MatchId, TeamId, PlayerId, PlayerTempId, Set, OwnGoal, AssisterPlayerId, AssisterPlayerTempId, Minutes, Date) VALUES (@MatchId, @TeamId, null, @PlayerTempId, @Set, @OwnGoal, null, null, @Minutes, @Date) RETURNING Id;",
+				goal,
+				transaction);
         }
-        else if(goal.AssisterPlayerId != Guid.Empty)
+
+        if (goal.AssisterPlayerId == Guid.Empty && goal.AssisterPlayerTempId != Guid.Empty)
         {
-            id = await _dbService.EditData(
-			"INSERT INTO goals (MatchId, TeamId, PlayerId, PlayerTempId, Set, OwnGoal, AssisterPlayerId, AssisterPlayerTempId, Minutes, Date) VALUES (@MatchId, @TeamId, @PlayerId, null, @Set, @OwnGoal, @AssisterPlayerId, null, @Minutes, @Date) RETURNING Id;",
-			goal);
+            return await connection.ExecuteScalarAsync<int>(
+				"INSERT INTO goals (MatchId, TeamId, PlayerId, PlayerTempId, Set, OwnGoal, AssisterPlayerTempId, AssisterPlayerId, Minutes, Date) VALUES (@MatchId, @TeamId, @PlayerId, null, @Set, @OwnGoal, @AssisterPlayerTempId, null, @Minutes, @Date) RETURNING Id;",
+				goal,
+				transaction);
         }
-        else
+
+        if (goal.AssisterPlayerId != Guid.Empty)
         {
-            id = await _dbService.EditData(
+            return await connection.ExecuteScalarAsync<int>(
+				"INSERT INTO goals (MatchId, TeamId, PlayerId, PlayerTempId, Set, OwnGoal, AssisterPlayerId, AssisterPlayerTempId, Minutes, Date) VALUES (@MatchId, @TeamId, @PlayerId, null, @Set, @OwnGoal, @AssisterPlayerId, null, @Minutes, @Date) RETURNING Id;",
+				goal,
+				transaction);
+        }
+
+        return await connection.ExecuteScalarAsync<int>(
 			"INSERT INTO goals (MatchId, TeamId, PlayerId, PlayerTempId, Set, OwnGoal, AssisterPlayerId, AssisterPlayerTempId, Minutes, Date) VALUES (@MatchId, @TeamId, @PlayerId, null, @Set, @OwnGoal, null, null, @Minutes, @Date) RETURNING Id;",
-			goal);
-        }
-        return id;
+			goal,
+			transaction);
+    }
+
+    private static async Task<int> GetChampionshipIdByMatchIdAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, int matchId)
+    {
+        const string sql = "SELECT championshipid FROM matches WHERE id = @matchId;";
+        return await connection.ExecuteScalarAsync<int>(sql, new { matchId }, transaction);
     }
         
     private async Task<bool> ThereIsAWinner(int matchId)
