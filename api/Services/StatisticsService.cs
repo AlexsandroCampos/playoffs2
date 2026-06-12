@@ -1,15 +1,18 @@
 using PlayOffsApi.DTO;
 using PlayOffsApi.Models;
+using System.Text.Json;
 
 namespace PlayOffsApi.Services;
 
 public class StatisticsService
 {
     private readonly DbService _dbService;
+    private readonly RedisService _redisService;
 
-    public StatisticsService(DbService dbService)
+    public StatisticsService(DbService dbService, RedisService redisService)
     {
         _dbService = dbService;
+        _redisService = redisService;
     }
     public async Task<List<ClassificationDTO>> GetClassificationsValidationAsync(int championshipId)
     {
@@ -616,7 +619,19 @@ public class StatisticsService
 
         if(championship is null)
             throw new ApplicationException("Campeonato não existe");
-        
+
+        await using var redisDatabase = await _redisService.GetDatabase();
+        var redisKey = $"championship:{championshipId}:strikers"; 
+        var cachedStrikersJson = await redisDatabase.GetValueAsync(redisKey);
+
+        if (!string.IsNullOrEmpty(cachedStrikersJson))
+        {
+            Console.WriteLine("JSON DO REDIS: " + cachedStrikersJson);
+            // Se achou no Redis, converte de volta para a lista e retorna imediatamente!
+            return JsonSerializer.Deserialize<List<StrikerDTO>>(cachedStrikersJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+
+        // 2. FALLBACK: SE O REDIS ESTIVER VAZIO, RODA A LÓGICA ANTIGA DO POSTGRES
         var strikers = new List<StrikerDTO>();
         
         var players = await _dbService.GetAll<PlayerGoalsSummaryDTO>(
