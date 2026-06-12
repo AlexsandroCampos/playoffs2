@@ -173,16 +173,26 @@ builder.Services.Configure<RabbitMqSettings>(
 	builder.Configuration.GetSection("RabbitMQ")
 );
 
+// Don't initialize RabbitMQ synchronously - defer to hosted service
 builder.Services.AddSingleton<IRabbitMqService>(provider =>
 {
+	// Return a lazy proxy that initializes on first use
 	var settings = provider.GetRequiredService<IOptions<RabbitMqSettings>>().Value;
-	return RabbitMqService.CreateAsync(
-		settings.Host,
-		settings.Port,
-		settings.UserName,
-		settings.Password
-	).GetAwaiter().GetResult();
+	var lazy = new Lazy<Task<IRabbitMqService>>(async () =>
+	{
+		return await RabbitMqService.CreateAsync(
+			settings.Host,
+			settings.Port,
+			settings.UserName,
+			settings.Password
+		);
+	});
+	
+	// Return a wrapper that handles the async initialization
+	return new RabbitMqServiceProxy(lazy);
 });
+
+builder.Services.AddHostedService<RabbitMqInitializationService>();
 
 var app = builder.Build();
 

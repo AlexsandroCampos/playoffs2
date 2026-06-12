@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "targets": {
     "net7.0": {
       "Microsoft.Extensions.Configuration/7.0.0": {
@@ -1695,19 +1695,19 @@
     ]
   },
   "packageFolders": {
-    "C:\\Users\\Alex\\.nuget\\packages\\": {}
+    "C:\\Users\\gusta\\.nuget\\packages\\": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\Alex\\Documents\\faculdade\\semestre_5\\bd2\\worker\\PlayOffs.Worker.csproj",
+      "projectUniqueName": "C:\\Users\\gusta\\Documents\\USP\\5_sem\\Distribuidos\\playoffs2\\back\\worker\\PlayOffs.Worker.csproj",
       "projectName": "PlayOffs.Worker",
-      "projectPath": "C:\\Users\\Alex\\Documents\\faculdade\\semestre_5\\bd2\\worker\\PlayOffs.Worker.csproj",
-      "packagesPath": "C:\\Users\\Alex\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\Alex\\Documents\\faculdade\\semestre_5\\bd2\\worker\\obj\\",
+      "projectPath": "C:\\Users\\gusta\\Documents\\USP\\5_sem\\Distribuidos\\playoffs2\\back\\worker\\PlayOffs.Worker.csproj",
+      "packagesPath": "C:\\Users\\gusta\\.nuget\\packages\\",
+      "outputPath": "C:\\Users\\gusta\\Documents\\USP\\5_sem\\Distribuidos\\playoffs2\\back\\worker\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
-        "C:\\Users\\Alex\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        "C:\\Users\\gusta\\AppData\\Roaming\\NuGet\\NuGet.Config"
       ],
       "originalTargetFrameworks": [
         "net7.0"
@@ -1717,6 +1717,7 @@
       },
       "frameworks": {
         "net7.0": {
+          "framework": "net7.0",
           "targetAlias": "net7.0",
           "projectReferences": {}
         }
@@ -1725,10 +1726,17 @@
         "warnAsError": [
           "NU1605"
         ]
-      }
+      },
+      "restoreAuditProperties": {
+        "enableAudit": "true",
+        "auditLevel": "low",
+        "auditMode": "direct"
+      },
+      "SdkAnalysisLevel": "11.0.100"
     },
     "frameworks": {
       "net7.0": {
+        "framework": "net7.0",
         "targetAlias": "net7.0",
         "dependencies": {
           "Microsoft.Extensions.Configuration.Json": {
@@ -1763,12 +1771,30 @@
         ],
         "assetTargetFallback": true,
         "warn": true,
+        "downloadDependencies": [
+          {
+            "name": "Microsoft.AspNetCore.App.Ref",
+            "version": "[7.0.20, 7.0.20]"
+          },
+          {
+            "name": "Microsoft.NETCore.App.Host.win-x64",
+            "version": "[7.0.20, 7.0.20]"
+          },
+          {
+            "name": "Microsoft.NETCore.App.Ref",
+            "version": "[7.0.20, 7.0.20]"
+          },
+          {
+            "name": "Microsoft.WindowsDesktop.App.Ref",
+            "version": "[7.0.20, 7.0.20]"
+          }
+        ],
         "frameworkReferences": {
           "Microsoft.NETCore.App": {
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\7.0.410\\RuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\11.0.100-preview.2.26159.112\\RuntimeIdentifierGraph.json"
       }
     }
   }

@@ -39,4 +39,4 @@ RUN dotnet publish "PlayOffsApi.csproj" -c Release -o /app/publish /p:UseAppHost
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
-CMD ASPNETCORE_URLS=http://*:$PORT dotnet PlayOffsApi.dll
+ENTRYPOINT ["dotnet", "PlayOffsApi.dll"]
