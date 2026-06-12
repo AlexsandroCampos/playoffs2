@@ -1,0 +1,193 @@
+@import "pure-variables.scss";
+@import "variables.scss";
+
+.img-listagem-times {
+  max-width: 60px;
+  max-height: 60px;
+}
+
+.tiny-text {
+  font-size: 0.8rem;
+}
+
+.chaveamento-btn {
+  width: auto;
+
+  transition: all $transition;
+
+  &:disabled {
+    filter: brightness(0.8);
+  }
+
+  &:hover {
+    filter: brightness(0.9);
+  }
+
+  &:active {
+    filter: brightness(0.8);
+  }
+}
+
+.ss-player-data-number {
+  border-radius: 0.6rem;
+}
+
+.ss-player-data-position {
+  border-radius: 0.8rem;
+}
+
+.ss-player-name {
+  width: 16rem !important;
+}
+
+.ss-player-username {
+  width: 17rem !important;
+}
+
+#times-vinculados {
+  max-height: 30rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+#link-bracket-btn-wrapper {
+  width: auto;
+}
+
+.delete-listed-thing {
+  width: 3.5rem;
+  height: 3.5rem;
+
+  cursor: pointer;
+
+  &:hover {
+    filter: brightness(0.9);
+  }
+
+  &:active {
+    filter: brightness(0.8);
+  }
+}
+
+.link-ss-list-team {
+  transition: all $transition;
+
+  &:hover {
+    filter: brightness(0.9);
+  }
+
+  &:active {
+    filter: brightness(0.8);
+  }
+}
+
+.ss-list-player-content {
+  transition: background-color $transition;
+}
+
+// media queries
+@include media-breakpoint-only(md) {
+  .ss-player-info-wrapper {
+    margin-bottom: 1rem;
+  }
+}
+
+@include media-breakpoint-down(lg) {
+  .chaveamento-btn {
+    width: 60%;
+  }
+
+  #delete-bracket-btn {
+    width: 60%;
+  }
+
+  #link-bracket-btn-wrapper {
+    width: 60%;
+  }
+}
+
+@include media-breakpoint-down(sm) {
+  .delete-listed-thing {
+    width: 3rem;
+    height: 3rem;
+  }
+
+  #times-vinculados {
+    &::-webkit-scrollbar {
+      display: none;
+    }
+
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .link-ss-list-team {
+    width: 50%;
+  }
+
+  #delete-bracket-btn {
+    width: 100%;
+  }
+
+  .chaveamento-btn {
+    width: 100%;
+  }
+
+  #texto-modal-bracket {
+    font: 0.9rem sans-serif;
+  }
+
+  #texto-modal-bracket-success {
+    font: 0.9rem sans-serif;
+  }
+
+  #link-bracket-btn-wrapper {
+    width: 100%;
+  }
+
+  #double-match-wrapper {
+    span {
+      font-size: 0.8rem;
+    }
+  }
+
+  .ss-player-name {
+    font-size: 1rem !important;
+    width: 8rem !important;
+  }
+
+  .ss-player-username {
+    font-size: 0.8rem !important;
+    width: 9rem !important;
+  }
+
+  .ss-player-data2 {
+    scale: 0.8;
+    width: 100%;
+
+    .ss-player-data-number {
+      width: 35%;
+    }
+
+    .ss-player-data-hr {
+      width: 35%;
+    }
+  }
+
+  .ss-player-info-wrapper {
+    width: 100%;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .delete-listed-thing {
+    width: 5rem !important;
+    height: 2rem;
+  }
+
+  .add-listed-thing {
+    width: 5rem !important;
+    height: 2rem;
+  }
+  
+}

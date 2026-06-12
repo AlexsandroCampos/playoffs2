@@ -1,0 +1,105 @@
+@import "variables.scss";
+
+@include color-mode(dark) {
+    .config-menu-list .active {
+        background: $play-cor-fundos-2-dark !important;
+    }
+}
+
+@include color-mode(light) {
+    .config-menu-list .active {
+        background: $play-cor-fundos-2 !important;
+        color: $black !important;
+    }
+}
+
+.config-menu-list {
+    button {
+        transition: all $transition;
+        
+        &:hover:not(.active) {
+            filter: brightness(0.8);
+            box-shadow: 0px 0px 17px 3px rgba(0, 0, 0, 0.1);
+        }
+    }
+}
+
+.config-user-pic-wrapper {
+    height: 7rem;
+    width: 7rem;
+}
+
+.config-user-pic-mod-wrapper {
+    height: 9rem;
+    width: 9rem;
+}
+
+.config-user-realname {
+    margin-bottom: -0.4rem;
+}
+
+.width-config-input {
+    width: 75% !important;
+}
+
+
+.play-btn-primary {
+    background-color: $play-cor-primaria;
+    color: $white;
+    border: none;
+    box-shadow: none;
+    transition: all $transition;
+
+    &:hover {
+        background-color: $play-cor-secundaria;
+        box-shadow: 5px 5px 20px 0px rgb(0 0 0 / 20%);
+        color: $white;
+
+    }
+
+    &:focus {
+        background-color: $play-cor-secundaria;
+        color: $white;
+    }
+}
+
+.ui-title {
+    top: -1.5rem;
+}
+
+.config-title {
+    top: -1.5rem;
+}
+
+.config-user-bio {
+    line-break: anywhere;
+}
+
+// Media Queries
+@include media-breakpoint-down(sm) {
+
+    .width-config-input {
+        width: 100% !important;
+    }
+
+    .play-btn-primary {
+        margin-bottom: 1rem !important;
+    }
+
+    .justify-touch-btn {
+        justify-content: center !important;
+        display: flex !important;
+    }
+
+    .justify-mobile-pic {
+        justify-content: center !important;
+    }
+}
+
+@include media-breakpoint-only(md) {
+    .width-config-input {
+        width: 100% !important;
+    }
+}
+
+

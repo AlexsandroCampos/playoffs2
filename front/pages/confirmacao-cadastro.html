@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script type="module" src="../js/utilidades/preloader.js"></script>
+    <link rel="icon" href="/favicon.ico" type="image/x-icon">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/android-chrome-192x192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="/android-chrome-512x512.png">
+    <link rel="manifest" href="/site.webmanifest">
+    <link rel="stylesheet" href="../scss/recuperar-senha.scss">
+    <title>Confirmação de Cadastro</title>
+</head>
+<body>
+    <componente-preloader></componente-preloader>
+    <main class="container">
+        <div class="row justify-content-center">
+            <div class="lvl0-color col-md-8 col-lg-6 pb-4 my-5 rounded-5 px-5">
+                <div id="confirmsign-card-header" class="mb-5 mt-5 flex-column align-items-center justify-content-center row">
+                    <select class="form-select rounded-3 mt-2 w-50 ps-3 py-2 bg-transparent col" id="lingua" required>
+                        <option value="ptbr">Português</option>
+                        <option value="en">English</option>
+                    </select>
+                </div>
+
+                <div id="div-reposta" class="d-none">
+                    <h4 id="texto-resposta" class="mb-2 text-center text-danger i18" key="Erro">Erro</h4>
+                    <p class="text-danger mb-5 i18 text-center" key="NaoConfirmou">Não foi possível realizar a confirmação de sua conta</p>
+                </div>
+
+                <div id="div-reposta-2" class="d-none">
+                    <h4 id="texto-resposta" class="mb-2 text-center text-danger i18" key="ErroConfirmacao">Erro ao realizar de confirmação de conta</h4>
+                    <p class="text-danger text-center mb-4 i18" key="CliqueReenviar">Clique no botão abaixo para reenviar a solicitação:</p>
+                    <div class="d-flex justify-content-center">
+                        <button id="reenviar-email" class="mb-5 col-md-4 btn pure-primary-bg inverted-text-color rounded-pill i18" key="ReenviarEmail">Reenviar email</button>
+                    </div>
+                </div>
+
+                <div id="div-reposta-3" class="d-none">
+                    <h4 id="texto-resposta" class="mb-4 text-success text-center i18" key="EmailConfirmacao">Email de confirmação de conta</h4>
+                    <p class="text-success mb-1 i18 text-center" key="VerifiqueEmail">Verifique o seu email e confirme a sua conta para poder acessá-la.</p>
+                    <p class="text-success mb-4 i18 text-center" key="CasoNao">Caso não tenha recebido o email, clique no botão abaixo para reenviar a solicitação:</p>
+                    <div class="d-flex justify-content-center">
+                        <button id="reenviar-email2" class="mb-4 col-md-4 btn pure-primary-bg inverted-text-color rounded-pill i18" key="ReenviarEmail">Reenviar email</button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </main>
+    <script type="module" src="../main.js"></script>
+    <script type="module" src="../js/confirmacao-cadastro.js"></script>
+</body>
+</html>

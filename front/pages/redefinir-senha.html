@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script type="module" src="../js/utilidades/preloader.js"></script>
+    <link rel="icon" href="/favicon.ico" type="image/x-icon">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/android-chrome-192x192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="/android-chrome-512x512.png">
+    <link rel="manifest" href="/site.webmanifest">
+    <link rel="stylesheet" href="../scss/recuperar-senha.scss">
+    <title>Redefinir senha</title>
+</head>
+<body>
+    <componente-preloader></componente-preloader>
+    <main class="container">
+        <div class="row justify-content-center">
+            <div class="lvl0-color col-md-8 col-lg-6 pb-4 my-5 rounded-5 px-5">
+                <div id="resetpass-card-header" class="mb-5 mt-5 flex-column align-items-center justify-content-center row">
+                    <select class="form-select rounded-3 mt-2 w-50 ps-3 py-2 bg-transparent col" id="lingua" required>
+                        <option value="ptbr" id="1">Português</option>
+                        <option value="en" id="2">English</option>
+                    </select>
+                </div>
+
+                <div id="div-reposta" class="d-none">
+                    <h4 id="texto-resposta" class="mb-2 text-danger text-center i18" key="Erro">Erro</h4>
+                    <p class="text-danger text-center mb-0 i18" key="NaoConfirmou">Não foi possível confirmar seu pedido de redefinição de senha.</p>
+                    <p class="text-danger text-center mb-5"> <span class="i18" key="Clique">Clique</span><a class="i18" key="Aqui" href="recuperar-senha.html">aqui</a> <span class="i18" key="PedidoNovamente">para realizar seu pedido novamente.</span></p>
+                </div>
+
+                <div id="div-reposta-2" class="d-none">
+                    <form id="formulario" method="post">
+                        <div id="senha-formulario" class="mb-5">
+                            <label for="senha" id="senha-label" class="form-label mt-3 i18" key="NovaSenha">Nova Senha:</label>
+                            <div class="d-flex position-relative">
+                                <div class="input-wrapper w-100">
+                                    <input type="password" class="form-control i18-placeholder" key="NovaSenhaPlaceholder" id="senha" name="senha" placeholder="Nova Senha..." required autocomplete="on">
+                                </div>
+                                <div id="olhos">
+                                    <i id="olho-aberto" class="btn lvl1-color normal-text-color rounded-0 rounded-end bi bi-eye position-absolute end-0"></i>
+                                    <i id="olho-fechado" class="btn lvl1-color normal-text-color rounded-0 rounded-end bi bi-eye-slash position-absolute end-0 d-none"></i>
+                                </div>
+                            </div>
+                            <div class="form-text text-success mt-2 i18" key="SenhaMensagem">Sua senha deve possuir:</div>
+                            <div class="mb-4">
+                                <div class="d-flex gap-2 mt-2">
+                                    <i id="icone-maiuscula" class="bi bi-x-circle-fill text-danger"></i>
+                                    <small id="texto-maiuscula" class="text-danger i18" key="LetraMaiuscula">Letra maiúscula</small>
+                                </div>
+                                <div class="d-flex gap-2">
+                                    <i id="icone-minuscula" class="bi bi-x-circle-fill text-danger"></i>
+                                    <small id="texto-minuscula" class="text-danger i18" key="LetraMinuscula">Letra minúscula</small>
+                                </div>
+                                <div class="d-flex gap-2">
+                                    <i id="icone-numero" class="bi bi-x-circle-fill text-danger"></i>
+                                    <small id="texto-numero" class="text-danger i18" key="Numero">Número</small>
+                                </div>
+                                <div class="d-flex gap-2">
+                                    <i id="icone-caractere" class="bi bi-x-circle-fill text-danger"></i>
+                                    <small id="texto-caractere" class="text-danger i18" key="Minimo">Pelo menos 4 caracteres</small>
+                                </div>
+                                <div class="d-flex gap-2">
+                                    <i id="icone-especial" class="bi bi-x-circle-fill text-danger"></i>
+                                    <small id="texto-especial" class="text-danger i18" key="Invalida">Nenhum acento ou caractere especial</small>
+                                </div>
+                            </div>
+                        </div>
+                    
+                        <div class="container m-0">
+                            <div class="row justify-content-center gap-2">
+                                <button class="col-md-4 btn pure-primary-bg inverted-text-color w-25 order-last rounded-pill i18" key="Enviar" id="Enviar" type="submit">Enviar</button>
+                                <a href="/index.html" class="col-md-4 w-25 btn lvl3-primary-bg rounded-pill i18" key="Cancelar">Cancelar</a>
+                            </div>
+                        </div>
+                        <div class="mt-4 text-danger">
+                            <p class="mt-1" id="mensagem-erro"></p>
+                        </div>
+                    </form>
+                </div>
+
+            </div>
+        </div>
+    </main>
+    <script type="module" src="../main.js"></script>
+    <script type="module" src="../js/redefinir-senha.js"></script>
+</body>
+</html>
