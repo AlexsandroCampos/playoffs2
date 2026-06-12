@@ -34,3 +34,4 @@ services:
       - RabbitMQ__Port=5672
       - RabbitMQ__UserName=guest
       - RabbitMQ__Password=guest
+      - ASPNETCORE_URLS=http://+:5000
