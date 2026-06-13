@@ -1,5 +1,7 @@
 using PlayOffsApi.Models;
 using PlayOffsApi.Validations;
+using Dapper;
+using System.Text.Json;
 
 namespace PlayOffsApi.Services;
 
@@ -224,11 +226,48 @@ public class FoulService
     
     private async Task CreateFoulToPlayerSend(Foul foul)
     {
-        await _dbService.EditData("INSERT INTO Fouls (YellowCard, Considered, MatchId, PlayerId, Minutes, Valid) VALUES (@YellowCard, @Considered, @MatchId, @PlayerId, @Minutes, @Valid)", foul);
+        await CreateFoulAndOutboxAsync(foul, playerIsTemp: false);
     }
+    
     private async Task CreateFoulToPlayerTempSend(Foul foul)
     {
-        await _dbService.EditData("INSERT INTO Fouls (yellowcard, considered, matchid, playertempid, minutes, valid) VALUES (@YellowCard, @Considered, @MatchId, @PlayerTempId, @Minutes, @Valid)", foul);
+        await CreateFoulAndOutboxAsync(foul, playerIsTemp: true);
+    }
+
+    private async Task CreateFoulAndOutboxAsync(Foul foul, bool playerIsTemp)
+    {
+        await _dbService.ExecuteInTransactionAsync(async (connection, transaction) =>
+        {
+            var foulId = playerIsTemp 
+                ? await connection.ExecuteScalarAsync<int>("INSERT INTO Fouls (YellowCard, Considered, MatchId, PlayerTempId, Minutes, Valid) VALUES (@YellowCard, @Considered, @MatchId, @PlayerTempId, @Minutes, @Valid) RETURNING Id;", foul, transaction)
+                : await connection.ExecuteScalarAsync<int>("INSERT INTO Fouls (YellowCard, Considered, MatchId, PlayerId, Minutes, Valid) VALUES (@YellowCard, @Considered, @MatchId, @PlayerId, @Minutes, @Valid) RETURNING Id;", foul, transaction);
+
+            var championshipId = await connection.ExecuteScalarAsync<int>("SELECT championshipid FROM matches WHERE id = @MatchId;", new { foul.MatchId }, transaction);
+
+            var payloadJson = JsonSerializer.Serialize(new
+            {
+                foulId,
+                matchId = foul.MatchId,
+                championshipId,
+                playerId = foul.PlayerId == Guid.Empty ? (Guid?)null : foul.PlayerId,
+                playerTempId = foul.PlayerTempId == Guid.Empty ? (Guid?)null : foul.PlayerTempId,
+                yellowCard = foul.YellowCard,
+                minutes = foul.Minutes,
+                occurredAtUtc = DateTime.UtcNow
+            });
+
+            await connection.ExecuteScalarAsync<long>(
+                "INSERT INTO outbox_events (event_type, payload_json, occurred_at, status) VALUES (@eventType, @payloadJson::jsonb, @occurredAtUtc, 'Pending') RETURNING id;",
+                new
+                {
+                    eventType = "foul.committed",
+                    payloadJson,
+                    occurredAtUtc = DateTime.UtcNow
+                },
+                transaction);
+            
+            return foulId;
+        });
     }
     
 }

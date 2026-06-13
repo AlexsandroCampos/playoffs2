@@ -1,15 +1,18 @@
 using PlayOffsApi.DTO;
 using PlayOffsApi.Models;
+using System.Text.Json;
 
 namespace PlayOffsApi.Services;
 
 public class StatisticsService
 {
     private readonly DbService _dbService;
+    private readonly RedisService _redisService;
 
-    public StatisticsService(DbService dbService)
+    public StatisticsService(DbService dbService, RedisService redisService)
     {
         _dbService = dbService;
+        _redisService = redisService;
     }
     public async Task<List<ClassificationDTO>> GetClassificationsValidationAsync(int championshipId)
     {
@@ -20,6 +23,28 @@ public class StatisticsService
         
         if(championship.Format == Enum.Format.Knockout)
             throw new ApplicationException("Estatísticas apenas para pontos corridos ou fase de grupos");
+
+        // ====================================================================
+        // OTIMIZAÇÃO FINAL (ENDGAME): LÊ A TABELA COMPLETA DO REDIS (~2ms)
+        // ====================================================================
+        await using var redisDatabase = await _redisService.GetDatabase();
+        var standingsJson = await redisDatabase.GetValueAsync($"championship:{championshipId}:standings");
+
+        if (!string.IsNullOrEmpty(standingsJson))
+        {
+            // Se o Worker já montou a classificação no background, devolvemos na hora!
+            return JsonSerializer.Deserialize<List<ClassificationDTO>>(standingsJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new List<ClassificationDTO>();
+        }
+
+        // ====================================================================
+        // FALLBACK: SE O REDIS ESTIVER VAZIO, EXECUTA O CÓDIGO PESADO
+        // ====================================================================
+        
+        // Mantemos a leitura do cache de cartões para ajudar no Fallback
+        var cardsJson = await redisDatabase.GetValueAsync($"championship:{championshipId}:cards");
+        var cachedCards = string.IsNullOrEmpty(cardsJson) 
+            ? new List<CardDTO>() 
+            : JsonSerializer.Deserialize<List<CardDTO>>(cardsJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         
         if(championship.SportsId == Sports.Football)
         {
@@ -47,8 +72,18 @@ public class StatisticsService
                     classificationDTO.AmountOfMatches = await AmountOfMatches(team.Id, championshipId);
                     classificationDTO.LastMatches = await GetLast3Matches(team.Id, championshipId);
                     classificationDTO.LastResults = GetResults(classificationDTO);
-                    classificationDTO.RedCard = await AmountOfRedCards(team.Id, championshipId); 
-                    classificationDTO.YellowCard = await AmountOfYellowCards(team.Id, championshipId); 
+                    
+                    if (cachedCards != null && cachedCards.Any())
+                    {
+                        classificationDTO.RedCard = cachedCards.Where(c => c.TeamId == team.Id).Sum(c => c.RedCards);
+                        classificationDTO.YellowCard = cachedCards.Where(c => c.TeamId == team.Id).Sum(c => c.YellowCards);
+                    }
+                    else
+                    {
+                        classificationDTO.RedCard = await AmountOfRedCards(team.Id, championshipId); 
+                        classificationDTO.YellowCard = await AmountOfYellowCards(team.Id, championshipId); 
+                    }
+
                     classificationsDTO.Add(classificationDTO);
                 }
                 return classificationsDTO;
@@ -78,8 +113,18 @@ public class StatisticsService
                     classificationDTO.AmountOfMatches = await AmountOfMatches(team.Id, championshipId);
                     classificationDTO.LastMatches = await GetLast3Matches(team.Id, championshipId);
                     classificationDTO.LastResults = GetResults(classificationDTO);
-                    classificationDTO.RedCard = await AmountOfRedCards(team.Id, championshipId); 
-                    classificationDTO.YellowCard = await AmountOfYellowCards(team.Id, championshipId); 
+
+                    if (cachedCards != null && cachedCards.Any())
+                    {
+                        classificationDTO.RedCard = cachedCards.Where(c => c.TeamId == team.Id).Sum(c => c.RedCards);
+                        classificationDTO.YellowCard = cachedCards.Where(c => c.TeamId == team.Id).Sum(c => c.YellowCards);
+                    }
+                    else
+                    {
+                        classificationDTO.RedCard = await AmountOfRedCards(team.Id, championshipId); 
+                        classificationDTO.YellowCard = await AmountOfYellowCards(team.Id, championshipId); 
+                    }
+
                     classificationsDTO.Add(classificationDTO);
                 }
                 return classificationsDTO;
@@ -149,6 +194,7 @@ public class StatisticsService
         }
         return new();
     }
+   
     private async Task<int> AmountOfRedCards(int teamId, int championshipId)
     {
         var tempCards = await _dbService.GetAsync<int>(
@@ -616,7 +662,19 @@ public class StatisticsService
 
         if(championship is null)
             throw new ApplicationException("Campeonato não existe");
-        
+
+        await using var redisDatabase = await _redisService.GetDatabase();
+        var redisKey = $"championship:{championshipId}:strikers"; 
+        var cachedStrikersJson = await redisDatabase.GetValueAsync(redisKey);
+
+        if (!string.IsNullOrEmpty(cachedStrikersJson))
+        {
+            Console.WriteLine("JSON DO REDIS: " + cachedStrikersJson);
+            // Se achou no Redis, converte de volta para a lista e retorna imediatamente!
+            return JsonSerializer.Deserialize<List<StrikerDTO>>(cachedStrikersJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+
+        // 2. FALLBACK: SE O REDIS ESTIVER VAZIO, RODA A LÓGICA ANTIGA DO POSTGRES
         var strikers = new List<StrikerDTO>();
         
         var players = await _dbService.GetAll<PlayerGoalsSummaryDTO>(
