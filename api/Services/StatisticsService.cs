@@ -25,9 +25,22 @@ public class StatisticsService
             throw new ApplicationException("Estatísticas apenas para pontos corridos ou fase de grupos");
 
         // ====================================================================
-        // OTIMIZAÇÃO: BUSCA O CACHE DE CARTÕES DO REDIS UMA ÚNICA VEZ
+        // OTIMIZAÇÃO FINAL (ENDGAME): LÊ A TABELA COMPLETA DO REDIS (~2ms)
         // ====================================================================
         await using var redisDatabase = await _redisService.GetDatabase();
+        var standingsJson = await redisDatabase.GetValueAsync($"championship:{championshipId}:standings");
+
+        if (!string.IsNullOrEmpty(standingsJson))
+        {
+            // Se o Worker já montou a classificação no background, devolvemos na hora!
+            return JsonSerializer.Deserialize<List<ClassificationDTO>>(standingsJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new List<ClassificationDTO>();
+        }
+
+        // ====================================================================
+        // FALLBACK: SE O REDIS ESTIVER VAZIO, EXECUTA O CÓDIGO PESADO
+        // ====================================================================
+        
+        // Mantemos a leitura do cache de cartões para ajudar no Fallback
         var cardsJson = await redisDatabase.GetValueAsync($"championship:{championshipId}:cards");
         var cachedCards = string.IsNullOrEmpty(cardsJson) 
             ? new List<CardDTO>() 
@@ -60,7 +73,6 @@ public class StatisticsService
                     classificationDTO.LastMatches = await GetLast3Matches(team.Id, championshipId);
                     classificationDTO.LastResults = GetResults(classificationDTO);
                     
-                    // APLICAÇÃO DA OTIMIZAÇÃO (SEM BATER NO BANCO)
                     if (cachedCards != null && cachedCards.Any())
                     {
                         classificationDTO.RedCard = cachedCards.Where(c => c.TeamId == team.Id).Sum(c => c.RedCards);
@@ -68,7 +80,6 @@ public class StatisticsService
                     }
                     else
                     {
-                        // FALLBACK SE O CACHE ESTIVER VAZIO
                         classificationDTO.RedCard = await AmountOfRedCards(team.Id, championshipId); 
                         classificationDTO.YellowCard = await AmountOfYellowCards(team.Id, championshipId); 
                     }
@@ -103,7 +114,6 @@ public class StatisticsService
                     classificationDTO.LastMatches = await GetLast3Matches(team.Id, championshipId);
                     classificationDTO.LastResults = GetResults(classificationDTO);
 
-                    // APLICAÇÃO DA OTIMIZAÇÃO (SEM BATER NO BANCO)
                     if (cachedCards != null && cachedCards.Any())
                     {
                         classificationDTO.RedCard = cachedCards.Where(c => c.TeamId == team.Id).Sum(c => c.RedCards);
@@ -111,7 +121,6 @@ public class StatisticsService
                     }
                     else
                     {
-                        // FALLBACK SE O CACHE ESTIVER VAZIO
                         classificationDTO.RedCard = await AmountOfRedCards(team.Id, championshipId); 
                         classificationDTO.YellowCard = await AmountOfYellowCards(team.Id, championshipId); 
                     }
