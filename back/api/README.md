@@ -1,41 +1,116 @@
-# pds-back-end
+# PlayOffs - Docker Compose Setup
 
-Como rodar?
+This guide describes how to run the entire PlayOffs application stack (backend API and frontend) using Docker Compose.
 
-Ter o dotnet 7 instalado
+## Prerequisites
 
-Ter docker desktop instalado
+- Docker Desktop installed and running
+- Docker Compose (included with Docker Desktop)
+- Git (optional, for cloning)
 
-No terminal powershell em que vai rodar a aplicação definir as variáveis de ambiente
-$env:EMAILCLIENT="xxx"
-$env:EMAILPASSWORD="xxx"
-$env:IS_DEVELOPMENT="true"
-$env:ASPNETCORE_ENVIRONMENT="Development"
-$env:MOUNT_PATH="C:/playoffs/uploads" -> caminho de uma pasta que vc precisa criar
-$env:CAPTCHA_KEY="SUA_CHAVE_RECAPTCHA"
-$env:SUPER_SECRET_PASSWORD="SENHA_ADMIN_LOCAL"
-$env:RabbitMQ__Host="localhost"
+## Quick Start
 
-Subir PostgreSQL, Redis e Elasticsearch com Docker:
-No PowerShell, execute:
+### 1. Start Backend Services
 
-docker run -d --name playoffs-postgres -e POSTGRES_PASSWORD=123456 -e POSTGRES_DB=postgres -p 5432:5432 postgres:15
+From the project root directory, run:
 
-docker run -d --name playoffs-redis -p 6379:6379 redis:7
+```bash
+docker compose up --build
+```
 
-docker run -d --name playoffs-elastic -p 9200:9200 -e discovery.type=single-node -e xpack.security.enabled=false -e ES_JAVA_OPTS=-Xms512m -e ES_JAVA_OPTS=-Xmx512m docker.elastic.co/elasticsearch/elasticsearch:8.9.0
+This automatically starts:
+- **PostgreSQL** database (port 5432)
+- **Redis** cache (port 6379)
+- **Elasticsearch** search engine (port 9200)
+- **RabbitMQ** message broker (port 5672)
+- **PlayOffs API** backend (port 5000)
 
+### 2. Verify Backend is Running
 
-Criar banco de dados e tabelas com docker
-docker exec -it playoffs-postgres psql -U postgres -d postgres
+Open your browser and go to:
+```
+http://localhost:5000/swagger/
+```
 
-CREATE DATABASE playoffs;
-\q
+You should see the Swagger API documentation with all available endpoints.
 
-embaixo vc precisa colocar o caminho para chegar no arquivo schema.sql
-docker cp C:\Users\Alex\Documents\faculdade\semestre_5\bd2\back\schema.sql playoffs-postgres:/tmp/schema.sql
+### 3. Start Frontend
 
-docker exec -it playoffs-postgres psql -U postgres -d playoffs -f /tmp/schema.sql
+In a **new terminal** window, navigate to the `front/` folder:
 
+```bash
+cd front
+npm install
+npm run dev
+```
 
+The frontend will start at:
+```
+http://localhost:5173/
+```
 
+## What Docker Compose Handles
+
+✅ Database creation (PostgreSQL "playoffs" database)  
+✅ Schema initialization (from `back/api/schema.sql`)  
+✅ Service networking (all containers can communicate)  
+✅ Health checks (waits for services to be ready before starting API)  
+✅ Volume management (persistent PostgreSQL data)  
+
+## Stopping Everything
+
+To stop all services:
+
+```bash
+docker compose down
+```
+
+To stop and remove all data (fresh start):
+
+```bash
+docker compose down -v
+```
+
+## Environment Variables
+
+The docker-compose.yml is pre-configured with default values:
+- PostgreSQL user: `postgres`
+- PostgreSQL password: `123456`
+- PostgreSQL database: `playoffs`
+- RabbitMQ user: `guest`
+- RabbitMQ password: `guest`
+
+To customize, edit `docker-compose.yml` under the `environment:` section.
+
+## Troubleshooting
+
+### API crashes on startup
+- Check logs: `docker compose logs api`
+- Verify all services are healthy: `docker compose ps`
+
+### Database connection fails
+- Remove old volumes: `docker compose down -v`
+- Rebuild: `docker compose up --build`
+
+### Frontend can't connect to API
+- Ensure API is running: `docker compose ps`
+- Check browser console for CORS errors
+- Verify API is accessible at `http://localhost:5000/swagger/`
+
+## Architecture
+
+```
+Browser (http://localhost:5173/)
+    ↓
+Frontend (Vite - port 5173)
+    ↓
+API (ASP.NET Core - port 5000)
+    ↓
+PostgreSQL (port 5432) + Redis (port 6379) + Elasticsearch (port 9200) + RabbitMQ (port 5672)
+```
+
+## Next Steps
+
+1. Access the frontend at `http://localhost:5173/`
+2. Use the API documentation at `http://localhost:5000/swagger/`
+3. Check RabbitMQ management UI at `http://localhost:15672/` (default: guest/guest)

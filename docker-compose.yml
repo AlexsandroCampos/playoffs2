@@ -4,12 +4,12 @@ services:
     container_name: playoffs-postgres
     environment:
       POSTGRES_PASSWORD: 123456
-      POSTGRES_DB: postgres
+      POSTGRES_DB: playoffs
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./back/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+      - ./back/api/schema.sql:/docker-entrypoint-initdb.d/schema.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -78,6 +78,12 @@ services:
       - RabbitMQ__UserName=guest
       - RabbitMQ__Password=guest
       - ASPNETCORE_URLS=http://+:5000
+      - EMAILCLIENT="xxx"
+      - EMAILPASSWORD="xxx"
+      - IS_DEVELOPMENT="true"
+      - MOUNT_PATH="C:/playoffs/uploads"
+      - CAPTCHA_KEY="SUA_CHAVE_RECAPTCHA"
+      - SUPER_SECRET_PASSWORD="SENHA_ADMIN_LOCAL"
 
 volumes:
   postgres_data:
