@@ -18,6 +18,12 @@ From the project root directory, run:
 docker compose up --build
 ```
 
+For production testing mode, use:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build
+```
+
 This automatically starts:
 - **PostgreSQL** database (port 5432)
 - **Redis** cache (port 6379)
@@ -69,6 +75,12 @@ To stop and remove all data (fresh start):
 
 ```bash
 docker compose down -v
+```
+
+or 
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml down -v
 ```
 
 ## Environment Variables

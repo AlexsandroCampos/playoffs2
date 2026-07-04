@@ -168,7 +168,8 @@ public class AuthService
 
 		var user = await GetUserByIdAsync(userId);
 		var token = GenerateJwtToken(user.Id, user.Email, DateTime.UtcNow.AddHours(2));
-		const string baseUrl = "https://www.playoffs.app.br/pages/confirmacao-cadastro.html";
+		var baseUrl = Environment.GetEnvironmentVariable("CONFIRM_EMAIL_URL")
+			?? "https://www.playoffs.app.br/pages/confirmacao-cadastro.html";
         var url = $"{baseUrl}?token={token}";
 		
         var emailResponse = EmailService.SendConfirmationEmail(user.Email, user.Username, url);
@@ -300,7 +301,8 @@ public class AuthService
 
 		var user = await GetUserByIdAsync(userId);
 		var token = GenerateJwtToken(user.Id, user.Email, DateTime.UtcNow.AddHours(2));
-		const string baseUrl = "https://www.playoffs.app.br/pages/redefinir-senha.html";
+		var baseUrl = Environment.GetEnvironmentVariable("RESET_PASSWORD_URL")
+			?? "https://www.playoffs.app.br/pages/redefinir-senha.html";
         var url = $"{baseUrl}?token={token}";
     
         var emailResponse = EmailService.SendEmailPasswordReset(user.Email, user.Username, url);

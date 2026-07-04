@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("PlayOffs.Worker")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+fe50c93ba2cc9d96e50da971add5b47b26a51917")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+fa70405dc74990e9a7d5f410e8ed80b6e8033611")]
 [assembly: System.Reflection.AssemblyProductAttribute("PlayOffs.Worker")]
 [assembly: System.Reflection.AssemblyTitleAttribute("PlayOffs.Worker")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

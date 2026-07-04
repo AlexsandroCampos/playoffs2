@@ -7,7 +7,7 @@ namespace PlayOffsApi.Services;
 public class EmailService
 {
     private static string Email => Environment.GetEnvironmentVariable("EMAILCLIENT");
-    private static string Senha => Environment.GetEnvironmentVariable("EMAILPASSWORD");
+    private static string Senha => Environment.GetEnvironmentVariable("EMAILPASSWORD")?.Replace(" ", string.Empty).Trim();
 
     public static bool SendEmailPasswordReset(string userEmail, string userName, string link)
     {

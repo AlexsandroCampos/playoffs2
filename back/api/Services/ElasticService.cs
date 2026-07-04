@@ -16,13 +16,19 @@ public class ElasticService
 		if (environment.IsProduction())
 		{
 			var ELASTIC_KEY = Environment.GetEnvironmentVariable("ELASTIC_KEY");
-			var ELASTIC_URL = Environment.GetEnvironmentVariable("ELASTIC_URL");
+			var ELASTIC_URL = Environment.GetEnvironmentVariable("ELASTIC_URL")
+				?? configuration.GetValue<string>("Elasticsearch:Urls")
+				?? configuration.GetValue<string>("ElasticURI");
 
-			settings = new ElasticsearchClientSettings(new Uri(ELASTIC_URL))
-				.GlobalHeaders(new NameValueCollection
+			settings = new ElasticsearchClientSettings(new Uri(ELASTIC_URL));
+
+			if (!string.IsNullOrWhiteSpace(ELASTIC_KEY))
+			{
+				settings = settings.GlobalHeaders(new NameValueCollection
 				{
 					{ "Authorization", ELASTIC_KEY }
 				});
+			}
 		}
 		else
 		{
