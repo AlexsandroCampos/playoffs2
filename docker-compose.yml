@@ -15,9 +15,6 @@ services:
       retries: 5
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
-  
-  volumes:
-    rabbitmq_data:
 
   api:
     build:
@@ -34,3 +31,25 @@ services:
       - RabbitMQ__Port=5672
       - RabbitMQ__UserName=guest
       - RabbitMQ__Password=guest
+
+  worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    container_name: playoffs-worker
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      - Worker__RabbitMq__Host=rabbitmq
+      - Worker__RabbitMq__Port=5672
+      - Worker__RabbitMq__UserName=guest
+      - Worker__RabbitMq__Password=guest
+      - Worker__RabbitMq__Exchange=playoffs-exchange
+      - Worker__RabbitMq__Queue=playoffs-queue
+      - Worker__RabbitMq__RoutingKey=playoffs.event
+      - Worker__Postgres__ConnectionString=Host=host.docker.internal;Port=5432;Database=playoffs;Username=postgres;Password=123456
+      - Worker__Redis__ConnectionString=host.docker.internal:6379
+
+volumes:
+  rabbitmq_data:

@@ -48,3 +48,8 @@ C:\Users\Alex\Documents\faculdade\semestre_5\bd2\worker\obj\Debug\net7.0\refint\
 C:\Users\Alex\Documents\faculdade\semestre_5\bd2\worker\obj\Debug\net7.0\PlayOffs.Worker.pdb
 C:\Users\Alex\Documents\faculdade\semestre_5\bd2\worker\obj\Debug\net7.0\PlayOffs.Worker.genruntimeconfig.cache
 C:\Users\Alex\Documents\faculdade\semestre_5\bd2\worker\obj\Debug\net7.0\ref\PlayOffs.Worker.dll
+c:\Users\Alex\Documents\faculdade\semestre_5\bd2\worker\bin\Debug\net7.0\Microsoft.Bcl.AsyncInterfaces.dll
+c:\Users\Alex\Documents\faculdade\semestre_5\bd2\worker\bin\Debug\net7.0\RabbitMQ.Client.dll
+c:\Users\Alex\Documents\faculdade\semestre_5\bd2\worker\bin\Debug\net7.0\System.Diagnostics.DiagnosticSource.dll
+c:\Users\Alex\Documents\faculdade\semestre_5\bd2\worker\bin\Debug\net7.0\System.Threading.Channels.dll
+c:\Users\Alex\Documents\faculdade\semestre_5\bd2\worker\bin\Debug\net7.0\System.Threading.RateLimiting.dll
