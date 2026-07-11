@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script type="module" src="../js/utilidades/preloader.js"></script>
+    <link rel="icon" href="/favicon.ico" type="image/x-icon">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/android-chrome-192x192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="/android-chrome-512x512.png">
+    <link rel="manifest" href="/site.webmanifest">
+    <title>Configuração de Usuário</title>
+</head>
+<body requires-auth="true">
+    <componente-preloader></componente-preloader>
+    <app-loader></app-loader>
+    <componente-header></componente-header>
+    <main class="container">
+        <div class="row flex-column flex-lg-row mx-auto mb-4 h-100">
+            <section class="col-auto config-menu mb-md mb-0 lvl0-color p-4 rounded-5">
+                <h5 class="i18" key="Configuracoes">Configurações</h5>
+
+                <!-- Config Menu -->
+                <ul class="list-group list-group-flush config-menu-list">
+                    <button menu="1" class="list-group-item lvl1-color list-group-item-action my-1 border-0 mt-2 rounded-4 active"><i class="bi bi-person me-2"></i> <span class="i18" key="Perfil">Perfil</span></button>
+                    <button menu="2" class="list-group-item lvl1-color list-group-item-action my-1 border-0 rounded-4"><i class="bi bi-gear me-2"></i> <span class="i18" key="Conta">Conta</span></button>
+                    <button menu="3" class="list-group-item lvl1-color list-group-item-action my-1 border-0 rounded-4"><i class="bi bi-lock me-2"></i> <span class="i18" key="Senha">Senha</span></button>
+                    <!-- <button class="list-group-item list-group-item-action my-1 border-0 mb-2 rounded-4"><i class="bi bi-envelope me-2"></i>Emails/Sessões</button> -->
+                </ul>
+            </section>
+
+            <div class="col mt-5 mt-md-5 mt-lg-0 mx-lg-2">
+                <!-- User Info -->
+                <section class="row config-user-info d-none d-lg-flex p-4 rounded-5 px-4 h-auto mb-2 position-relative lvl0-color">
+                    <div class="row">
+                        <div class="col-1 position-relative p-0 overflow-hidden rounded-circle border border-2 config-user-pic-wrapper">
+                            <!-- $ Imagem de Pefil do Usuário  ../default-user-image.png -->
+                            <img src="../default-user-image.png" alt="config-user-pic" class="img-fluid position-absolute w-100 h-100" id="config-user-pic">
+                        </div>
+                        <div class="col mt-2">
+
+                            <!-- $ Nome Real do Usuário -->
+                            <p id="nome" class="fs-4 config-user-realname"></p>
+    
+                            <!-- $ Nome de Usuário do Usuário :) -->
+                            <p id="nome-usuario" class="fs-5 mb-0 config-user-name"></p>
+
+                            <!-- $ Email do Usuário -->
+                            <p id="email" class="fs-6 opacity-75 config-user-email"></p>
+                        </div>
+                    </div>
+
+                    <div class="mt-4">
+                        <p id="biografia" class="config-user-bio text-break">
+                        </p>
+                    </div>
+                </section>
+
+                <!-- Configs - Default(Perfil) -->
+                <section class="row config-options-wrapper justify-mobile-pic p-4 px-2 px-md-4 rounded-5 h-auto position-relative lvl0-color">
+                    <p class="position-absolute config-title fw-semibold i18" key="Perfil">Perfil</p>
+                </section>
+
+                <div class="modal fade" id="deleteAccount" tabindex="-1" aria-labelledby="deleteAccountLabel" aria-hidden="true">
+                    <div class="modal-dialog">
+                      <div class="modal-content p-3">
+                        <div class="modal-header">
+                          <h1 class="modal-title fs-5 i18" id="exampleModalLabel" key="Confirmacao">Você tem certeza?</h1>
+                          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <!-- form -->
+                        <form id="delete-account-form" class="row" method="">
+                            <div class="modal-body">
+                                <p class="text-danger">
+                                    <span class="i18" key="Caso">Caso você decida</span>  <span class="fw-bold i18" key="Excluir"> excluir </span> 
+                                    <span class="i18" key="Sua">sua conta, perderá permanentemente todos os dados e 
+                                        informações associados a ela. Além disso, você não terá mais acesso à plataforma e 
+                                        não poderá mais interagir com determinadas ferramentas por meio dela. 
+                                        É importante ressaltar que essa ação é
+                                    </span>  <span class="fw-bold i18" key="Irreversivel">irreversível</span><span class="i18" key="Explicacao">, portanto, antes de excluí-la, 
+                                        você deve avaliar cuidadosamente se é isso que realmente deseja fazer.</span>
+                                </p>                                
+                                <div class="col-12 mt-3">
+                                    <label for="delete-account-user-name-input" class="form-label i18" key="NomeUsuario">Nome de Usuário</label>
+                                    <input type="text" class="form-control i18-placeholder" key="NomeUsuario" id="delete-account-user-name-input" placeholder="Nome de Usuário">
+                                    <p id="nome-usuario-erro" class="mt-2 text-danger"></p>
+                                </div>
+                               
+                            </div>
+                            <div class="modal-footer justify-content-center">
+                                <button type="submit" id="excluir-conta"  class="btn btn-danger i18" key="ExcluirConta">Excluir Conta Permanentemente</button>
+                            </div>
+
+                            <p class="text-danger mt-2" id="erro-excluir"></p>
+                            
+                        </form>
+                      </div>
+                    </div>
+                  </div>
+            </div>
+        </div>
+        <div class="mt-4">
+            <p class="text-danger" id="mensagem-erro"></p>
+        </div>
+    </main>
+    <componente-footer></componente-footer>
+    <script type="module" src="../main.js"></script>
+    <script type="module" src="../js/utilidades/header.js"></script>
+    <script type="module" src="../js/configuracao-usuarios.js"></script>
+    <script type="module" src="../js/utilidades/footer.js"></script>
+</body>
+</html>

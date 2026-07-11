@@ -1,0 +1,20 @@
+{
+  "PesquisaPlaceholder": "Pesquisar por campeonatos",
+  "LinkCadastroCampeonato": "Criar Campeonato",
+  "Acessar": "Acessar",
+  "Perfil": "Página de perfil",
+  "Configuracoes": "Configurações de usuário",
+  "Campeonato": "Cadastrar campeonato",
+  "ConfigurarCampeonato": "Configurar campeonato",
+  "Time": "Criar time",
+  "TimeConfig": "Configurar time",
+  "Sair": "Sair da conta",
+  "Politica": "Política",
+  "Termos": "Termos",
+  "Sobre": "Sobre",
+  "Campeonatos gerenciados": "Campeonatos gerenciados",
+  "TextoLogout": "Tem certeza que deseja sair da sua conta?",
+  "Logout": "Sair",
+  "Moderacao": "Moderação",
+  "ErrorLogs": "Logs de Erro"
+}

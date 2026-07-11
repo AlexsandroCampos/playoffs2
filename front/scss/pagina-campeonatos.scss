@@ -1,0 +1,287 @@
+// @import "bootstrap-config.scss";
+@import "variables.scss";
+
+body, html {
+    overflow-x: hidden !important;
+}
+
+.bg-grad {
+    height: 15rem;
+    border-radius: $border-radius-2xl $border-radius-2xl 0 0 !important;
+}
+
+.championship-info {
+    top: 10rem;
+}
+
+.championship-char {
+    border-radius: 8px;
+}
+
+.championship-pic-wrapper {
+    height: 8rem;
+    width: 8rem;
+
+    background-color: $white;
+}
+
+.championship-name {
+    margin-bottom: -0.4rem;
+}
+
+.championship-options-btn {
+    transition: all $transition;
+
+    a {
+        text-decoration: none;
+    }
+
+    &:hover {
+        filter: brightness(0.9) !important;
+    }
+
+    &:active {
+        filter: brightness(0.8) !important;
+    }
+}
+
+// .championship-config-btn {
+//     background: $play-cor-fundos;
+//     transition: all $transition;
+
+//     a {
+//         text-decoration: none;
+//         color: $play-cor-texto;
+//     }
+
+//     &:hover {
+//         background: $play-cor-fundos-2;
+//         color: $white;
+//     }
+
+//     &:active {
+//         background: $play-cor-fundos-2;
+//     }
+// }
+
+.ss-team-logo {
+    height: 4rem;
+    min-width: 4rem;
+
+    img {
+        min-width: 100%;
+    }
+}
+
+.ss-team-name {
+    margin-bottom: -0.3rem;
+    width: 16rem !important;
+}
+
+.ss-team-content {
+    &:hover {
+        filter: brightness(0.9);
+    }
+
+    &:active {
+        filter: brightness(0.8);
+    }
+}
+
+.sports-section {
+    margin-top: 25rem;
+}
+
+.sports-icon-wrapper {
+    width: 100%;
+}
+
+.sports-icon {
+    height: 1.5rem;
+    width: 1.5rem;
+}
+
+@mixin ss-test {
+    display: block;
+    position: absolute;
+    background-repeat: no-repeat;
+    background-size: cover;
+    z-index: -1;
+}
+
+.ss-test-1 {
+    @include ss-test;
+
+    top: 5.5rem;
+    right: 11.5rem;
+
+    opacity: 1.7;
+
+    width: 9rem;
+    height: 9rem;
+
+    background-image: url(../icons/sports_basketball.svg);
+
+    filter: invert(70%);
+    
+    transform: rotate(132deg);
+}
+
+.ss-test-2 {
+    @include ss-test;
+
+    top: -10.5rem;
+    right: 0.5rem;
+
+    opacity: 0.5;
+
+    width: 9rem;
+    height: 9rem;
+
+    background-image: url(../icons/sports_volleyball.svg);
+
+    filter: invert(70%);
+    
+    transform: rotate(173deg);
+}
+
+.ss-title {
+    border-radius: $border-radius-2xl $border-radius-2xl 0 0 !important;
+    height: 4rem;
+    box-shadow: none;
+    background-color: rgb(179 233 148 / 20%) !important;
+    border: none !important;
+}
+
+.ss-first-content {
+    border-radius: 0 0 $border-radius-2xl $border-radius-2xl !important;
+    max-height: 23rem;
+    overflow-y: auto;
+
+    div {
+        flex: 0 0 auto;
+    }
+}
+
+.ss-slider {
+    div {
+        cursor: pointer;
+    }
+}
+
+@include media-breakpoint-only(md) {
+    .ss-test-1 {
+        top: -30.5rem;
+        right: 7.5rem;
+    }
+
+    .ss-test-2 {
+        top: -5.5rem;
+        right: 37.5rem;
+    }
+
+    .ss-slider {
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+
+        &::-webkit-scrollbar {
+            display: none;
+        }
+
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+
+    #conteudo,
+    #conteudo2 {
+        justify-content: center;
+        align-items: center;
+    }
+}
+
+.download-btn {
+    a {
+        text-decoration: none;
+    }
+    
+    &:hover {
+        filter: brightness(0.9);
+    }
+
+    &:active {
+        filter: brightness(0.8);
+        
+    }
+}
+
+@include media-breakpoint-down(sm) {
+    .bg-grad {
+        height: 10rem;
+    }
+
+    .championship-desc {
+        font-size: 0.7rem;
+    }
+
+    .ss-team-name {
+        width: 8rem !important;
+    }
+
+    .sports-section {
+        margin-top: 32rem;
+    }
+
+    .sports-icon-wrapper {
+        width: 15%;
+    }
+
+    .ss-test-2 {
+        top: -4.5rem;
+        right: 16.5rem;
+    }
+
+    .ss-first-content {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        height: 8rem;
+
+        div {
+            flex: 0 0 auto;
+        }
+    }
+
+    .ss-slider {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+
+        width: 100vw;
+        position: absolute;
+        left: 50%;
+        right: 50%;
+        top: 2rem;
+        margin-left: -50vw;
+
+        &::-webkit-scrollbar {
+            display: none;
+        }
+
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+
+        div {
+            flex: 0 0 auto;
+
+            &:first-child {
+                margin-left: 1.5rem !important;
+            }
+
+            &:last-child {
+                margin-right: 1.9rem !important;
+            }
+
+            box-shadow: 0px 0px 4px 1px rgba(0, 0, 0, 0.1);
+
+        }
+    }
+}

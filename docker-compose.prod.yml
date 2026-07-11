@@ -1,0 +1,38 @@
+services:
+  api:
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:5000
+
+      # JWT settings required by Program.cs in Production
+      AUTH_ISSUER: http://localhost:5000
+      AUTH_AUDIENCE: http://localhost:5000
+      AUTH_KEY: ReplaceThisWithAStrongSecretKeyAtLeast32Chars
+
+      # PostgreSQL settings required by OutboxEventRepository in Production
+      PGUSER: postgres
+      PGPASSWORD: 123456
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: playoffs
+
+      # Keep service discovery inside Docker network
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=playoffs;Username=postgres;Password=123456
+      Redis__Host: redis
+      Elasticsearch__Urls: http://elasticsearch:9200
+      ELASTIC_URL: http://elasticsearch:9200
+      ELASTIC_KEY: ""
+      RabbitMQ__Host: rabbitmq
+      RabbitMQ__Port: "5672"
+      RabbitMQ__UserName: guest
+      RabbitMQ__Password: guest
+
+      # App-specific runtime settings
+      IS_DEVELOPMENT: "false"
+      EMAILCLIENT: driveteste878@gmail.com
+      EMAILPASSWORD: crln azvc ualp ifue
+      MOUNT_PATH: /app/uploads
+      CONFIRM_EMAIL_URL: ${CONFIRM_EMAIL_URL:-https://localhost:5173/pages/confirmacao-cadastro.html}
+      RESET_PASSWORD_URL: ${RESET_PASSWORD_URL:-https://localhost:5173/pages/redefinir-senha.html}
+      CAPTCHA_KEY: 6LftU04tAAAAAObnwuoCkirdTIIfkGHa4tsyMMDd
+      SUPER_SECRET_PASSWORD: SENHA_ADMIN_LOCAL

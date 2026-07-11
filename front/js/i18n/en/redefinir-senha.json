@@ -1,0 +1,20 @@
+{
+    "TituloPagina": "Reset Password",
+    "Erro": "Error",
+    "NaoConfirmou": "We were unable to confirm your password reset request.",
+    "Clique": "Click ",
+    "Aqui": "here",
+    "PedidoNovamente": "to place your request again.",
+    "NovaSenha": "New Password:",
+    "NovaSenhaPlaceholder": "New Password...",
+    "SenhaMensagem": "Your password must contain:",
+    "SenhaObrigatoria": "You must enter your password",
+    "LetraMaiuscula": "Uppercase letter",
+    "LetraMinuscula": "Lower case",
+    "Numero": "Number",
+    "Minimo": "At least 4 characters",
+    "Invalida": "No accents or special characters",
+    "Salvar": "Send",
+    "Cancelar": "Cancel",
+    "Enviar": "Send"
+}

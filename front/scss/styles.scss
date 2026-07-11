@@ -1,0 +1,668 @@
+@import "bootstrap-config.scss";
+
+$offset: 20vw;
+$move-initial: calc(-25% + $offset);
+$move-final: calc(-50% + $offset);
+
+$color-mode-type: data;
+
+@include color-mode(dark) {
+  *::-webkit-scrollbar-track {
+    background: $body-tertiary-bg-dark;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    border: 3px solid $body-tertiary-bg-dark;
+  }
+
+  componente-footer {
+    background-color: $body-tertiary-bg-dark !important;
+  }
+
+  .bg-grad {
+    background: $body-tertiary-bg-dark;
+    background: linear-gradient(180deg, $body-tertiary-bg-dark 0%, rgba(255,255,255,0) 100%);
+  }
+
+  .normal-text-color {
+    color: $white !important;
+  }
+
+  .inverted-text-color {
+    color: $black !important;
+  }
+
+  .inverted-text-color:hover {
+    filter: brightness(0.8);
+  }
+
+  .pure-primary-bg {
+    background-color: $play-cor-pure-primary !important;
+  }
+
+  .lvl1-primary-bg {
+    background-color: $play-cor-fundos-dark !important;
+  }
+
+  .lvl2-primary-bg {
+    background-color: $play-cor-fundos-2-dark !important;
+  }
+
+  .lvl3-primary-bg {
+    background-color: $play-cor-fundos-3-dark !important;
+  }
+
+  .navbar-blur {
+    background: rgb(29 41 29 / 10%) !important;
+  }
+
+  .just-validate-error-label {
+    color: $play-cor-danger-dark !important;
+  }
+
+  .lvl0-color {
+    background-color: $body-tertiary-bg-dark !important;
+  }
+
+  .lvl1-color {
+    background-color: $gray-800 !important;
+  }
+
+  .lvl2-color {
+    background-color: $gray-700 !important;
+  }
+
+  .lvl3-color {
+    background-color: $gray-600 !important;
+  }
+
+  .text-danger {
+    color: $play-cor-danger-dark !important;
+  }
+
+  .list__champs {  
+    &:hover {
+      background-color: $gray-800 !important;
+    }
+  }
+
+  .bi-eye, .bi-eye-slash {
+    color: $black;
+    background-color: $white;
+  }
+
+  .corner-babies {
+    background-color: $black !important;
+
+    i {
+      color: $white !important;
+    }
+  }
+}
+
+@include color-mode(light) {
+  .bg-grad {
+    background: $white;
+    background: linear-gradient(180deg, $white 0%, rgba(255,255,255,0) 100%);
+  }
+
+  *::-webkit-scrollbar-track {
+    background: $white;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    border: 3px solid $white;
+  }
+
+  componente-footer {
+    background-color: $white !important;
+  }
+
+  body {
+    background-color: $gray-200 !important;
+  }
+
+  .normal-text-color {
+    color: $black !important;
+  }
+
+  .inverted-text-color {
+    color: $white !important;
+  }
+
+  .inverted-text-color:hover {
+    filter: brightness(1.2);
+  }
+
+  .pure-primary-bg {
+    background-color: $play-cor-pure-primary-dark !important;
+  }
+
+  .lvl1-primary-bg {
+    background-color: $play-cor-fundos !important;
+  }
+
+  .lvl2-primary-bg {
+    background-color: $play-cor-fundos-2 !important;
+  }
+
+  .lvl3-primary-bg {
+    background-color: $play-cor-fundos-3 !important;
+  }
+
+  .lvl0-color {
+    background-color: $white !important;
+  }
+
+  .lvl1-color {
+    background-color: $gray-200 !important;
+  }
+
+  .lvl2-color {
+    background-color: $gray-300 !important;
+  }
+
+  .lvl3-color {
+    background-color: $gray-400 !important;
+  }
+
+  .list__champs {  
+    &:hover {
+      background-color: $gray-100 !important;
+    }
+  }
+
+  .bi-eye, .bi-eye-slash {
+    color: $white;
+    background-color: $black;
+  }
+}
+
+.form-label {
+  margin-bottom: 0 !important;
+}
+
+html {
+  &.lenis {
+    height: auto;
+  }
+}
+
+.lenis {
+  &.lenis-smooth {
+    scroll-behavior: auto;
+  }
+
+  &.lenis-smooth { 
+    [data-lenis-prevent] {
+      overscroll-behavior: contain;
+    }
+  }
+
+  &.lenis-stopped {
+    overflow: hidden;
+  }
+
+  &.lenis-scrolling iframe {
+    pointer-events: none;
+  } 
+}
+
+body {
+  font-family: $font-family-sans-serif;
+  margin: 0;
+}
+
+// -- Classes Comuns
+
+.z-0 {
+  z-index: 0;
+}
+
+.z-1 {
+  z-index: 1;
+}
+
+.z-2 {
+  z-index: 2;
+}
+
+.z-3 {
+  z-index: 3;
+}
+
+.z-4 {
+  z-index: 4;
+}
+
+.cursor-pointer {
+  cursor: pointer;
+}
+
+.logo-image {
+  height: 6.5rem;
+  min-width: 6.5rem;
+
+  background-color: $white;
+
+  img {
+      min-width: 100%;
+  }
+}
+
+button {
+  transition: filter $transition, background-color $transition, background $transition;
+  &:hover {
+    filter: brightness(0.9);
+  }
+  &:active {
+    filter: brightness(0.8);
+  }
+}
+
+button[key='LimparFiltros'] {
+  @include media-breakpoint-down(sm) {
+    & {
+      width: 100%;
+    }
+  }
+}
+
+.list-hover-darken {
+  transition: filter $transition, background-color $transition, background $transition;
+  &:hover {
+    filter: brightness(0.9);
+  }
+  &:active {
+    filter: brightness(0.8);
+  }
+}
+
+.sport-change-warning {
+  font-size: 0.8rem;
+}
+
+// o suficiente para nao ficar estranho com o offcanvas aberto
+.z-1039 {
+  z-index: 1039;
+}
+
+.ptx-90 {
+  padding-top: 90px !important;
+}
+
+.vh-91 {
+  height: 91vh !important;
+}
+
+.h-90 {
+  height: 90% !important;
+}
+
+.topx-14 {
+  top: 14px;
+}
+
+.topr-2 {
+  top: 3.5rem !important;
+}
+
+.mbr-8 {
+  margin-bottom: 8rem !important;
+}	
+
+.w-60 {
+  width: 60% !important;
+}
+
+.w-90 {
+  max-width: 90% !important;
+}
+
+.w-87 {
+  width: 87% !important;
+}
+
+.mt-6r {
+  margin-top: 6rem !important;
+}
+
+.rounded-bottom-0 {
+  border-bottom-left-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+}
+
+.list__champs {
+  transition: background-color $transition;
+}
+
+.translate-6 {
+  transform: translate(6%, 6%) !important;
+}
+
+.glass-effect {
+  background: rgba( 216, 255, 219, 0.2 );
+  backdrop-filter: blur( 4px );
+  -webkit-backdrop-filter: blur( 4px );
+  border-radius: 10px;
+  box-shadow: 0 8px 32px 0 rgb(0 0 0 / 20%);
+  border: 1px solid rgba( 255, 255, 255, 0.18 );
+}
+
+// Colors
+.bg-gray-400 {
+  background-color: $gray-400 !important;
+}
+
+
+
+@supports (-webkit-backdrop-filter: none) or (backdrop-filter: none) {
+  .navbar-blur {
+    backdrop-filter: blur( 15px );
+    -webkit-backdrop-filter: blur( 15px );
+    border-bottom: 1px solid rgba(98, 98, 98, 0.121) !important;
+  }
+}
+
+/* slightly transparent fallback for Firefox (not supporting backdrop-filter) */
+@supports not ((-webkit-backdrop-filter: none) or (backdrop-filter: none)) {
+  .navbar-blur {
+    background-color: rgba(255, 255, 255, .8);
+  }
+}
+
+// -- Outras Classes
+
+.link-unstyled {
+    text-decoration: none !important;
+    color: inherit !important;
+}
+
+.dragover {
+  border: 2px dashed $play-cor-efeitos !important;
+}
+
+.upload-image-drop-label {
+  justify-content: center;
+}
+
+.upload-container {
+  text-align: center;
+  margin-top: 50px;
+}
+
+.upload-drop-zone {
+  border: 2px dashed #ccc;
+  padding: 20px;
+}
+
+#bd-theme {
+  height: 55px;
+  width: 55px;
+  background-color: $play-cor-efeitos;
+  opacity: .8;
+  transition: all $transition;
+  z-index: 1050;
+}
+
+#theme-switcher-context-menu {
+  border-radius: 14px;
+}
+  
+// Conteúdo Principal
+#gotop {
+  background-color: $play-cor-efeitos;
+  opacity: .8;
+  height: 55px;
+  width: 55px;
+  transition: all $transition;
+
+  i {
+    font-size: 1.6rem;
+    top: 1.6rem;
+    color: $play-cor-secundaria;
+  }
+}
+
+header {
+  transition: all $transition;
+}
+
+.offcanvas-backdrop {
+  background-color: transparent !important;
+}
+
+.offcanvas-backdrop.show {
+  opacity: 1 !important;
+}
+
+.just-validate-error-label {
+  font-size: 0.8rem;
+  font-weight: 400;
+  margin-top: 0.1rem;
+}
+
+.ft-color {
+  color: $play-cor-texto;
+}
+
+.ft-color-dim {
+  color: $play-cor-texto-dim;
+}
+
+.fvar-1 {
+  color: $play-cor-efeitos;
+}
+
+.fvar-2 {
+  color: $play-cor-secundaria;
+}
+
+.main-btn-color {
+  background: $play-cor-primaria;
+  color: $white;
+  transition: all $transition;
+}
+
+.main-btn-color:hover {
+  background: $play-cor-fundos;
+  color: $black;
+}
+
+
+.rounded-custom {
+  border-radius: 10px !important;
+  border-color:$play-cor-efeitos !important;
+}
+
+// Navbar
+.pesquisar {
+  box-shadow: none !important;
+  border-radius: $border-radius-pill;
+}
+
+.thead-custom {
+  background-color: $play-cor-secundaria; 
+  color: $white; 
+}
+
+.navbar {
+  height: 60px !important;
+  transition: all $transition;
+  background: transparent !important;
+}
+
+.nav-item {
+  a, #lingua {
+    transition: all $transition;
+  }
+
+  #lingua {
+    box-shadow: none;
+    border: none;
+    cursor: pointer;
+    outline: none;
+
+    option {
+      cursor: pointer;
+    }
+
+    &:active, &:focus {
+      background-color: $play-cor-fundos-2 !important;
+      color: $play-cor-texto !important;
+      box-shadow: none;
+      border: none;
+      cursor: pointer;
+      outline: none;
+    }
+  }
+}
+
+.navbar-user-img-wrapper {
+  height: 32px !important;
+  width: 32px !important;
+}
+
+// .nav-item {
+//   &:hover, &:active, &:focus {
+//     a, #lingua {
+//       background-color: $play-cor-fundos-2 !important;
+//       color: $play-cor-texto !important;
+//     }
+//   }
+// }
+
+input[aria-label="Search"] {
+  &:focus, & {
+    text-align: center;
+  }
+}
+
+button.navbar-toggler {
+  background-color: transparent !important;
+  color: $play-cor-texto !important;
+  transition: all $transition;
+  
+  &:focus {
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+  }
+
+  &:hover {
+    filter: brightness(0.9);
+  }
+
+  &:active {
+    filter: brightness(0.8);
+  }
+  
+}
+
+.offcanvas.offcanvas-end.mobile {
+  width: 100% !important;
+}
+
+// Media Queries
+@include media-breakpoint-down(lg) {
+  // .nav-item {
+  //   a, #lingua {
+  //     color: $play-cor-texto !important;
+  //   }
+  // }
+}
+
+@include media-breakpoint-down(sm) {
+  .navbar-blur {
+    background: rgb(255 255 255 / 10%) !important;
+  }
+}
+
+@include media-breakpoint-only(md) {
+  ul.menu-li {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+  }
+  
+  .navbar {
+    .container {
+      position: relative;
+    }
+
+    .navbar-collapse {
+      position: absolute;
+      top: 100%;
+      background: $white;
+      height: 400vh;
+    }
+  }
+
+  .upload-image-drop-label {
+    justify-content: start;
+  }
+}
+
+#lingua {
+  border: 1px solid $play-cor-primaria!important;
+  background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path fill='none' stroke='%23015958' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/></svg>");
+}
+
+.foto-usuario {
+  min-width: 32px;
+  height: 32px;
+  border-radius: 50%;
+}
+
+.foto-usuario-mobile {
+  @extend .foto-usuario;
+
+  max-width: 32px !important;
+}
+
+#offcanvasUser {
+  .item-offcanvas-usuario:hover {
+    /* From https://css.glass */
+    background: rgba(0, 143, 140, 0.28);
+    // border-radius: 16px;
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.205);
+    backdrop-filter: blur(3.3px);
+    -webkit-backdrop-filter: blur(3.3px);
+    transition: .1s background, backdrop-filter, -webkit-backdrop-filter;
+  }
+
+  .item-offcanvas-usuario {
+    transition: .1s background, backdrop-filter, -webkit-backdrop-filter;
+  }  
+}
+
+.navbar-clicavel {
+  cursor: pointer;
+}
+
+//estilização da barra de rolagem
+
+*::-webkit-scrollbar {
+  width: 12px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color:$play-cor-primaria;
+  border-radius: 20px;
+}
+
+componente-footer {
+  width: 100%;
+  display: block;
+  margin-top: 2rem;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 60px - 2rem);
+}
+
+main {
+  flex: 1; 
+}

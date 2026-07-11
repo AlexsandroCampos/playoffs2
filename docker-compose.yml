@@ -1,10 +1,50 @@
 services:
+  postgres:
+    image: postgres:15
+    container_name: playoffs-postgres
+    environment:
+      POSTGRES_PASSWORD: 123456
+      POSTGRES_DB: playoffs
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./back/api/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    container_name: playoffs-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.9.0
+    container_name: playoffs-elastic
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+
   rabbitmq:
     image: rabbitmq:management
     container_name: playoffs-rabbitmq
     ports:
-      - "5672:5672"      # AMQP port
-      - "15672:15672"    # Management UI
+      - "5672:5672"
+      - "15672:15672"
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
@@ -18,27 +58,51 @@ services:
 
   api:
     build:
-      context: ./api
+      context: ./back/api
       dockerfile: Dockerfile
     container_name: playoffs-api
     ports:
       - "5000:5000"
     depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_started
       rabbitmq:
         condition: service_healthy
     environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=playoffs;Username=postgres;Password=123456
+      - Redis__Host=redis
+      - Elasticsearch__Urls=http://elasticsearch:9200
       - RabbitMQ__Host=rabbitmq
       - RabbitMQ__Port=5672
       - RabbitMQ__UserName=guest
       - RabbitMQ__Password=guest
+      - ASPNETCORE_URLS=http://+:5000
+      - EMAILCLIENT="xxx"
+      - EMAILPASSWORD="xxx"
+      - IS_DEVELOPMENT="true"
+      - MOUNT_PATH="C:/playoffs/uploads"
+      - CAPTCHA_KEY="SUA_CHAVE_RECAPTCHA"
+      - SUPER_SECRET_PASSWORD="SENHA_ADMIN_LOCAL"
+    volumes:
+      - ./back/api/uploads:/app/uploads
+
 
   worker:
     build:
-      context: ./worker
+      context: ./back/worker
       dockerfile: Dockerfile
     container_name: playoffs-worker
     depends_on:
       rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     environment:
       - Worker__RabbitMq__Host=rabbitmq
@@ -48,8 +112,10 @@ services:
       - Worker__RabbitMq__Exchange=playoffs-exchange
       - Worker__RabbitMq__Queue=playoffs-queue
       - Worker__RabbitMq__RoutingKey=playoffs.event
-      - Worker__Postgres__ConnectionString=Host=host.docker.internal;Port=5432;Database=playoffs;Username=postgres;Password=123456
-      - Worker__Redis__ConnectionString=host.docker.internal:6379
+      - Worker__Postgres__ConnectionString=Host=postgres;Port=5432;Database=playoffs;Username=postgres;Password=123456
+      - Worker__Redis__ConnectionString=redis:6379
 
 volumes:
+  postgres_data:
   rabbitmq_data:
+  elasticsearch_data:
