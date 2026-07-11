@@ -28,7 +28,7 @@ services:
       RabbitMQ__Password: guest
 
       # App-specific runtime settings
-      IS_DEVELOPMENT: "true"
+      IS_DEVELOPMENT: "false"
       EMAILCLIENT: driveteste878@gmail.com
       EMAILPASSWORD: crln azvc ualp ifue
       MOUNT_PATH: /app/uploads

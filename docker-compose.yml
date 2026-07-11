@@ -89,7 +89,7 @@ services:
 
   worker:
     build:
-      context: ./worker
+      context: ./back/worker
       dockerfile: Dockerfile
     container_name: playoffs-worker
     depends_on:
