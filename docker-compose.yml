@@ -51,6 +51,8 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
 
   api:
     build:
@@ -85,5 +87,29 @@ services:
       - CAPTCHA_KEY="SUA_CHAVE_RECAPTCHA"
       - SUPER_SECRET_PASSWORD="SENHA_ADMIN_LOCAL"
 
+  worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    container_name: playoffs-worker
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - Worker__RabbitMq__Host=rabbitmq
+      - Worker__RabbitMq__Port=5672
+      - Worker__RabbitMq__UserName=guest
+      - Worker__RabbitMq__Password=guest
+      - Worker__RabbitMq__Exchange=playoffs-exchange
+      - Worker__RabbitMq__Queue=playoffs-queue
+      - Worker__RabbitMq__RoutingKey=playoffs.event
+      - Worker__Postgres__ConnectionString=Host=postgres;Port=5432;Database=playoffs;Username=postgres;Password=123456
+      - Worker__Redis__ConnectionString=redis:6379
+
 volumes:
   postgres_data:
+  rabbitmq_data:

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Options;
 using Npgsql;
 using PlayOffs.Worker.Contracts;
+using PlayOffs.Worker.Processing;
 
 namespace PlayOffs.Worker.Infrastructure;
 
@@ -8,11 +9,13 @@ public sealed class PostgresProjectionQueryRepository : IProjectionQueryReposito
 {
     private readonly WorkerOptions _options;
     private readonly ILogger<PostgresProjectionQueryRepository> _logger;
+    private readonly StandingsBuilderService _standingsBuilder;
 
-    public PostgresProjectionQueryRepository(IOptions<WorkerOptions> options, ILogger<PostgresProjectionQueryRepository> logger)
+    public PostgresProjectionQueryRepository(IOptions<WorkerOptions> options, ILogger<PostgresProjectionQueryRepository> logger, StandingsBuilderService standingsBuilder)
     {
         _options = options.Value;
         _logger = logger;
+        _standingsBuilder = standingsBuilder;
     }
 
     public async Task<int?> ResolveChampionshipIdByMatchIdAsync(int matchId, CancellationToken ct)
@@ -34,7 +37,12 @@ public sealed class PostgresProjectionQueryRepository : IProjectionQueryReposito
 
     public async Task<string?> BuildStandingsJsonAsync(int championshipId, CancellationToken ct)
     {
-        return await ExecuteProjectionJsonAsync(_options.Postgres.BuildStandingsJsonQuery, championshipId, ct);
+        return await _standingsBuilder.BuildStandingsJsonAsync(championshipId);
+    }
+
+    public async Task<string?> BuildCardsJsonAsync(int championshipId, CancellationToken ct)
+    {
+        return await ExecuteProjectionJsonAsync(_options.Postgres.BuildCardsJsonQuery, championshipId, ct);
     }
 
     public async Task<string?> BuildStrikersJsonAsync(int championshipId, CancellationToken ct)

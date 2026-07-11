@@ -6,6 +6,7 @@ using PlayOffsApi.DTO;
 using PlayOffsApi.Enum;
 using PlayOffsApi.Models;
 using PlayOffsApi.Validations;
+using System.Text.Json;
 
 namespace PlayOffsApi.Services;
 
@@ -110,6 +111,7 @@ public class MatchService
         {
             await InvalidingPlayerTempCards(temp, championship, match);
         }
+        await DispatchMatchEndedEvent(match.Id, championship.Id);
     }
     private async Task<List<User>> GetAllUsersByTeamsId(int id1, int id2)
         => await _dbService.GetAll<User>("SELECT * FROM Users WHERE PlayerTeamId = @id1 OR PlayerTeamId = @id2 AND accepted = true", new {id1, id2});
@@ -679,6 +681,7 @@ public class MatchService
         {
             await InvalidingPlayerTempCards(temp, championship, match);
         }
+        await DispatchMatchEndedEvent(match.Id, championship.Id);
 
     }
     private async Task<bool> CheckIfLastMatchHasEnded(Match match)
@@ -1180,6 +1183,7 @@ public class MatchService
         {
             await InvalidingPlayerTempCards(temp, championship, match);
         }
+        await DispatchMatchEndedEvent(match.Id, championship.Id);
     }
 
     private async Task<bool> CheckIfGroupStageEnded(int championshipId)
@@ -2199,6 +2203,20 @@ public class MatchService
         }
         
         await _dbService.EditData("UPDATE Matches SET Penalties = true WHERE id=@matchId", new {matchId});
+    }
+
+    private async Task DispatchMatchEndedEvent(int matchId, int championshipId)
+    {
+        var payloadJson = JsonSerializer.Serialize(new
+        {
+            matchId,
+            championshipId,
+            occurredAtUtc = DateTime.UtcNow
+        });
+
+        await _dbService.EditData(
+            "INSERT INTO outbox_events (event_type, payload_json, occurred_at, status) VALUES (@eventType, @payloadJson::jsonb, @occurredAtUtc, 'Pending')",
+            new { eventType = "match.ended", payloadJson, occurredAtUtc = DateTime.UtcNow });
     }
       
 }

@@ -1,52 +1,62 @@
-using PlayOffsApi.DTO;
-using PlayOffsApi.Models;
+using Dapper;
+using Npgsql;
 using System.Text.Json;
+using Microsoft.Extensions.Options;
+using PlayOffs.Worker.Domain; // Confirme se é este o namespace dos seus DTOs
 
-namespace PlayOffsApi.Services;
+namespace PlayOffs.Worker.Processing;
 
-public class StatisticsService
+public class StandingsBuilderService
 {
-    private readonly DbService _dbService;
-    private readonly RedisService _redisService;
+    private readonly string _connectionString;
+    private readonly StackExchange.Redis.ConnectionMultiplexer _redis;
+    private FakeDbService _dbService; // O nosso truque para não precisar refatorar seu código
 
-    public StatisticsService(DbService dbService, RedisService redisService)
+    public StandingsBuilderService(IOptions<WorkerOptions> options)
     {
-        _dbService = dbService;
-        _redisService = redisService;
+        _connectionString = options.Value.Postgres.ConnectionString;
+        _redis = StackExchange.Redis.ConnectionMultiplexer.Connect(options.Value.Redis.ConnectionString);
     }
-    public async Task<List<ClassificationDTO>> GetClassificationsValidationAsync(int championshipId)
+
+    public async Task<string> BuildStandingsJsonAsync(int championshipId)
+    {
+        await using var conn = new NpgsqlConnection(_connectionString);
+        await conn.OpenAsync();
+        _dbService = new FakeDbService(conn); // Inicia a conexão para os seus métodos usarem
+
+        var classifications = await GetClassificationsValidationAsync(championshipId);
+
+        // Gera o JSON final perfeito e em camelCase para a API consumir
+        return JsonSerializer.Serialize(classifications, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+    }
+
+    // ====================================================================
+    // O TRUQUE MÁGICO: Imita o DbService da sua API usando o Dapper
+    // ====================================================================
+    private class FakeDbService
+    {
+        private readonly NpgsqlConnection _conn;
+        public FakeDbService(NpgsqlConnection conn) => _conn = conn;
+        public async Task<T> GetAsync<T>(string sql, object param = null) => await _conn.QueryFirstOrDefaultAsync<T>(sql, param);
+        public async Task<List<T>> GetAll<T>(string sql, object param = null) => (await _conn.QueryAsync<T>(sql, param)).ToList();
+    }
+
+    // ====================================================================
+    // MÉTODO PRINCIPAL ADAPTADO
+    // ====================================================================
+    private async Task<List<ClassificationDTO>> GetClassificationsValidationAsync(int championshipId)
     {
         var championship = await GetChampionshipByIdSend(championshipId);
+        if (championship is null || championship.Format == Enum.Format.Knockout) return new();
 
-        if(championship is null)
-            throw new ApplicationException("Campeonato não existe");
-        
-        if(championship.Format == Enum.Format.Knockout)
-            throw new ApplicationException("Estatísticas apenas para pontos corridos ou fase de grupos");
-
-        // ====================================================================
-        // OTIMIZAÇÃO FINAL (ENDGAME): LÊ A TABELA COMPLETA DO REDIS (~2ms)
-        // ====================================================================
-        await using var redisDatabase = await _redisService.GetDatabase();
-        var standingsJson = await redisDatabase.GetValueAsync($"championship:{championshipId}:standings");
-
-        if (!string.IsNullOrEmpty(standingsJson))
-        {
-            // Se o Worker já montou a classificação no background, devolvemos na hora!
-            return JsonSerializer.Deserialize<List<ClassificationDTO>>(standingsJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new List<ClassificationDTO>();
-        }
-
-        // ====================================================================
-        // FALLBACK: SE O REDIS ESTIVER VAZIO, EXECUTA O CÓDIGO PESADO
-        // ====================================================================
-        
-        // Mantemos a leitura do cache de cartões para ajudar no Fallback
-        var cardsJson = await redisDatabase.GetValueAsync($"championship:{championshipId}:cards");
+        // Lê os cartões do Redis direto no background!
+        var dbRedis = _redis.GetDatabase();
+        var cardsJson = await dbRedis.StringGetAsync($"championship:{championshipId}:cards");
         var cachedCards = string.IsNullOrEmpty(cardsJson) 
             ? new List<CardDTO>() 
             : JsonSerializer.Deserialize<List<CardDTO>>(cardsJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-        
-        if(championship.SportsId == Sports.Football)
+
+        if(championship.SportsId == Enum.Sports.Football)
         {
             var classifications = await GetAllClassificationsByChampionshipId(championshipId);
             var classificationsDTO = new List<ClassificationDTO>();
@@ -58,8 +68,7 @@ public class StatisticsService
                 {
                     var classificationDTO = new ClassificationDTO();
                     var team = await GetByTeamIdSendAsync(classification.TeamId);
-                    if (team is null)
-                        continue;
+                    if (team is null) continue;
                     
                     classificationDTO.Position = classification.Position;
                     classificationDTO.Points = classification.Points;
@@ -83,12 +92,10 @@ public class StatisticsService
                         classificationDTO.RedCard = await AmountOfRedCards(team.Id, championshipId); 
                         classificationDTO.YellowCard = await AmountOfYellowCards(team.Id, championshipId); 
                     }
-
                     classificationsDTO.Add(classificationDTO);
                 }
                 return classificationsDTO;
             }
-
             else if(championship.Format == Enum.Format.GroupStage)
             {
                 var classificationsDTOOrdered = new List<Classification>();
@@ -124,13 +131,11 @@ public class StatisticsService
                         classificationDTO.RedCard = await AmountOfRedCards(team.Id, championshipId); 
                         classificationDTO.YellowCard = await AmountOfYellowCards(team.Id, championshipId); 
                     }
-
                     classificationsDTO.Add(classificationDTO);
                 }
                 return classificationsDTO;
             }
         }
-
         else
         {
             var classifications = await GetAllClassificationsByChampionshipId(championshipId);
@@ -160,7 +165,6 @@ public class StatisticsService
                 }
                 return classificationsDTO;
             }
-
             else if(championship.Format == Enum.Format.GroupStage)
             {
                 var classificationsDTOOrdered = new List<Classification>();
@@ -194,7 +198,12 @@ public class StatisticsService
         }
         return new();
     }
-   
+
+    // ====================================================================
+    // VÁ NO SEU StatisticsService DA API, COPIE TODOS OS MÉTODOS PRIVADOS 
+    // E COLE-OS AQUI ABAIXO! (AmountOfWins, GoalDifference, etc...)
+    // ====================================================================
+
     private async Task<int> AmountOfRedCards(int teamId, int championshipId)
     {
         var tempCards = await _dbService.GetAsync<int>(
@@ -655,95 +664,18 @@ public class StatisticsService
                 GROUP BY g.TeamId
             ) AS SubqueryAlias;",
             new { championshipId, teamId });
-    
-    public async Task<List<StrikerDTO>> GetStrikersValidationAsync(int championshipId)
-    {
-        var championship = await GetChampionshipByIdSend(championshipId);
 
-        if(championship is null)
-            throw new ApplicationException("Campeonato não existe");
 
-        await using var redisDatabase = await _redisService.GetDatabase();
-        var redisKey = $"championship:{championshipId}:strikers"; 
-        var cachedStrikersJson = await redisDatabase.GetValueAsync(redisKey);
+}
 
-        if (!string.IsNullOrEmpty(cachedStrikersJson))
-        {
-            Console.WriteLine("JSON DO REDIS: " + cachedStrikersJson);
-            // Se achou no Redis, converte de volta para a lista e retorna imediatamente!
-            return JsonSerializer.Deserialize<List<StrikerDTO>>(cachedStrikersJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-        }
+// Modelos simplificados embutidos para que o arquivo não dê erro de compilação
+public class Championship { public int Id { get; set; } public Enum.Format Format { get; set; } public Enum.Sports SportsId { get; set; } }
+public class Classification { public int Id { get; set; } public int TeamId { get; set; } public int Position { get; set; } public int Points { get; set; } public int ChampionshipId { get; set; } }
+public class Team { public int Id { get; set; } public string Emblem { get; set; } public string Name { get; set; } }
+public class Match { public int Id { get; set; } public int Home { get; set; } public int Visitor { get; set; } public DateTime Date { get; set; } public int HomeGoals {get;set;} public int VisitorGoals{get;set;} public int HomeWinnigSets{get;set;} public int VisitorWinnigSets{get;set;} }
 
-        // 2. FALLBACK: SE O REDIS ESTIVER VAZIO, RODA A LÓGICA ANTIGA DO POSTGRES
-        var strikers = new List<StrikerDTO>();
-        
-        var players = await _dbService.GetAll<PlayerGoalsSummaryDTO>(
-                @"SELECT COALESCE(g.PlayerId, g.PlayerTempId) AS PlayerIdOrTempId, COUNT(*) AS Goals
-                FROM goals g
-                JOIN Matches m ON g.MatchId = m.Id
-                WHERE g.OwnGoal = false AND m.ChampionshipId = @championshipId
-                GROUP BY COALESCE(PlayerId, PlayerTempId)
-                ORDER BY Goals DESC
-                LIMIT 15;", 
-                new {championshipId});
-        
-        players = players.OrderByDescending(r => r.Goals).ToList();
-
-        int distinctCount = 0;
-        int fifthLargestGoals = 0;
-
-        for (int i = 0; i < players.Count; i++)
-        {
-            if (i == 0 || players[i].Goals != players[i - 1].Goals)
-            {
-                distinctCount++;
-            }
-
-            if (distinctCount == 5)
-            {
-                fifthLargestGoals = players[i].Goals;
-                break;
-            }
-        }
-        
-        players.RemoveAll(p => p.Goals < fifthLargestGoals);
-
-        foreach (var player in players)
-        {
-            var user = await _dbService.GetAsync<User>("SELECT * FROM users WHERE Id = @id", new {id = player.PlayerIdOrTempId});
-            if(user is not null)
-            {
-                var team = await GetByTeamIdSendAsync(user.PlayerTeamId);
-                var striker = new StrikerDTO
-                {
-                    Goals = player.Goals,
-                    Name = user.Name,
-                    Picture = user.Name,
-                    TeamEmblem = team.Emblem,
-                    TeamId = team.Id,
-                    ID = user.Id
-                };
-                strikers.Add(striker);
-            }
-            else
-            {
-                var playerTemp = await _dbService.GetAsync<PlayerTempProfile>("SELECT * FROM playertempprofiles WHERE Id = @id", new {id = player.PlayerIdOrTempId});
-                var team = await GetByTeamIdSendAsync(playerTemp.TeamsId);
-                if (playerTemp is null || team is null)
-                    continue;
-                
-                var striker = new StrikerDTO
-                {
-                    Goals = player.Goals,
-                    Name = playerTemp.Name,
-                    Picture = playerTemp.Picture,
-                    TeamEmblem = team.Emblem,
-                    TeamId = team.Id,
-                    ID = playerTemp.Id
-                };
-                strikers.Add(striker);
-            }
-        }
-        return strikers;
-    }
+public static class Enum
+{
+    public enum Format { Knockout = 1, LeagueSystem = 2, GroupStage = 3 }
+    public enum Sports { Football = 1, Volleyball = 2 }
 }

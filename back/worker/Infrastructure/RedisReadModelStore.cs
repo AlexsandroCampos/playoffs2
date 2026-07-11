@@ -22,6 +22,13 @@ public sealed class RedisReadModelStore : IReadModelStore
         await db.StringSetAsync(key, jsonPayload);
     }
 
+    public async Task SaveCardsAsync(int championshipId, string jsonPayload, CancellationToken ct)
+    {
+        var db = _redis.GetDatabase();
+        var key = string.Format(_options.Redis.CardsKeyPattern, championshipId);
+        await db.StringSetAsync(key, jsonPayload);
+    }
+
     public async Task SaveStrikersAsync(int championshipId, string jsonPayload, CancellationToken ct)
     {
         var db = _redis.GetDatabase();
