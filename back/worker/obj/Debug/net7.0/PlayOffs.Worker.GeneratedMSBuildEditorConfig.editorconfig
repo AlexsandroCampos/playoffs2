@@ -1,7 +1,5 @@
 is_global = true
 build_property.TargetFramework = net7.0
-build_property.TargetFrameworkIdentifier = .NETCoreApp
-build_property.TargetFrameworkVersion = v7.0
 build_property.TargetPlatformMinVersion = 
 build_property.UsingMicrosoftNETSdkWeb = 
 build_property.ProjectTypeGuids = 
@@ -10,12 +8,4 @@ build_property.PlatformNeutralAssembly =
 build_property.EnforceExtendedAnalyzerRules = 
 build_property._SupportedPlatformList = Linux,macOS,Windows
 build_property.RootNamespace = PlayOffs.Worker
-<<<<<<< HEAD:back/worker/obj/Debug/net7.0/PlayOffs.Worker.GeneratedMSBuildEditorConfig.editorconfig
-build_property.ProjectDir = C:\Users\gusta\Documents\USP\5_sem\Distribuidos\playoffs2\back\worker\
-build_property.EnableComHosting = 
-build_property.EnableGeneratedComInterfaceComImportInterop = 
-build_property.EffectiveAnalysisLevelStyle = 7.0
-build_property.EnableCodeStyleSeverity = 
-=======
 build_property.ProjectDir = c:\Users\Alex\Documents\faculdade\semestre_5\bd2\worker\
->>>>>>> main:worker/obj/Debug/net7.0/PlayOffs.Worker.GeneratedMSBuildEditorConfig.editorconfig

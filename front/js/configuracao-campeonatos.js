@@ -1029,6 +1029,7 @@ const init = async () => {
 
 	async function abaPendencias() {
 		const response = await executarFetch(`todo/${championshipId}`, configuracaoFetch("GET"))
+		if (!response) return
 		const pendencias = response.results
 		console.log(pendencias)
 		if (!pendencias.rules) {

@@ -86,7 +86,7 @@ public class AuthService
 		if (await UserAlreadyExists(newUser))
 			return new() { Resource.UserAlreadyRegistered };
 
-		newUser.Picture = "https://playoffs-api.up.railway.app/img/e82930b9-b71c-442a-9bc9-95b189c19afb";
+		newUser.Picture = "";
 
 		if (await UserAlreadyExistsInPlayerTemp(newUser.Email))
 		{

@@ -34,5 +34,5 @@ services:
       MOUNT_PATH: /app/uploads
       CONFIRM_EMAIL_URL: ${CONFIRM_EMAIL_URL:-https://localhost:5173/pages/confirmacao-cadastro.html}
       RESET_PASSWORD_URL: ${RESET_PASSWORD_URL:-https://localhost:5173/pages/redefinir-senha.html}
-      CAPTCHA_KEY: SUA_CHAVE_RECAPTCHA
+      CAPTCHA_KEY: 6LftU04tAAAAAObnwuoCkirdTIIfkGHa4tsyMMDd
       SUPER_SECRET_PASSWORD: SENHA_ADMIN_LOCAL

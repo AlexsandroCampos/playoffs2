@@ -1,3 +1,3 @@
 export const exibidorImagem = (elemento, link) => {
-    elemento.src = link == null ? '/public/default-championship-image' : link
+    elemento.src = link == null ? '/default-championship-image.png' : link
 }

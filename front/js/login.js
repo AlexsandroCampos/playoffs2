@@ -105,7 +105,7 @@ async function postToken(body) {
         mensagemErro.classList.add("text-danger")
         senha.value = ""
         localStorage.setItem('autenticado', true)
-        
+        grecaptcha.reset() 
     } else {
         window.location.assign(`/`)
     }

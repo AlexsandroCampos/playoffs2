@@ -36,6 +36,8 @@ services:
       - ES_JAVA_OPTS=-Xms512m -Xmx512m
     ports:
       - "9200:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
 
   rabbitmq:
     image: rabbitmq:management
@@ -86,6 +88,9 @@ services:
       - MOUNT_PATH="C:/playoffs/uploads"
       - CAPTCHA_KEY="SUA_CHAVE_RECAPTCHA"
       - SUPER_SECRET_PASSWORD="SENHA_ADMIN_LOCAL"
+    volumes:
+      - ./back/api/uploads:/app/uploads
+
 
   worker:
     build:
@@ -113,3 +118,4 @@ services:
 volumes:
   postgres_data:
   rabbitmq_data:
+  elasticsearch_data:

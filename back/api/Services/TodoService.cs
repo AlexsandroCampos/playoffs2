@@ -32,9 +32,9 @@ public class TodoService
         };
 
         var matches = await _championshipService.GetAllMatchesByChampionshipValidation(championshipId);
-        if (!matches.Any()) return todoList;
         
         matches = matches.Where(m => !m.Finished).ToList();
+        if (!matches.Any()) return todoList;
         var earliestRound = matches.Min(m => m.Round);
         var earliestPhase = matches.Min(m => m.Phase);
         

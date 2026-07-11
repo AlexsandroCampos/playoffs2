@@ -21,7 +21,7 @@ public partial class ImageService
         var results = ValidateUpload(file, type);
         if (results.Any())
             return results;
-
+        Directory.CreateDirectory(_mountPath);
         var filePath = Path.Combine(_mountPath, file.FileName + "." + file.Extension);
         await using var stream = File.Create(filePath);
         file.Stream.Position = 0;

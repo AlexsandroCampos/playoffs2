@@ -361,7 +361,7 @@ export class header extends HTMLElement {
         const autenticado = localStorage.getItem('autenticado') == 'true'
         if (!autenticado) return;
 
-        const defaultImg = 'https://cdn-icons-png.flaticon.com/512/17/17004.png'
+        const defaultImg = '/default-user-image.png'
         const user = JSON.parse(localStorage.getItem('user-info'))
         const navbarToggler = document.querySelector('.navbar-toggler')
         const info = /* html */`

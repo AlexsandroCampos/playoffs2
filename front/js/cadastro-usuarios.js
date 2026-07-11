@@ -132,7 +132,10 @@ async function postUsuario(endpoint, body) {
     const data = await executarFetch(endpoint, config, callbackServidor, callbackServidor)
     loader.hide()
 
-    if (!data) return false
+    if (!data) {
+        grecaptcha.reset()
+        return false
+    }
 
     idUsuario = data.results
     notificacaoSucesso(data.message)
