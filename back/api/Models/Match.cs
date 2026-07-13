@@ -5,6 +5,7 @@ namespace PlayOffsApi.Models;
 public class Match
 {
     public int Id { get; set; }
+    public int Version { get; set; }
     public int Winner { get; set; }
     public int Home { get; set; }
     public int Visitor { get; set; }

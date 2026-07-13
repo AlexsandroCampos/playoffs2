@@ -1,4 +1,5 @@
 
+using Dapper;
 using FluentValidation;
 using Microsoft.AspNetCore.Routing.Tree;
 using Microsoft.Net.Http.Headers;
@@ -6,6 +7,7 @@ using PlayOffsApi.DTO;
 using PlayOffsApi.Enum;
 using PlayOffsApi.Models;
 using PlayOffsApi.Validations;
+using Npgsql;
 using System.Text.Json;
 
 namespace PlayOffsApi.Services;
@@ -736,13 +738,13 @@ public class MatchService
     {
         if(teamId == 0)
         {
-            return await _dbService.EditData("UPDATE matches SET Tied = true WHERE id = @matchId returning id", new {teamId, matchId});
+                return await _dbService.EditData("UPDATE matches SET Tied = true, version = version + 1 WHERE id = @matchId returning id", new {teamId, matchId});
         }
-        return await _dbService.EditData("UPDATE matches SET Winner = @teamId WHERE id = @matchId returning id", new {teamId, matchId});
+        return await _dbService.EditData("UPDATE matches SET Winner = @teamId, version = version + 1 WHERE id = @matchId returning id", new {teamId, matchId});
     }
     private async Task UpdateMatchToDefineTie(int matchId)
     {
-        await _dbService.EditData("UPDATE matches SET Tied = true WHERE Id = @matchId", new {matchId});
+        await _dbService.EditData("UPDATE matches SET Tied = true, version = version + 1 WHERE Id = @matchId", new {matchId});
     }
     private async Task<int> AssignPoints(int teamId, int championshipId, int points)
         => await _dbService.EditData(
@@ -1315,10 +1317,30 @@ public class MatchService
     private async Task<bool> CheckIfUniformBelongsToTeam(int teamId, string uniform)
         => await _dbService.GetAsync<bool>("SELECT EXISTS(SELECT * FROM teams WHERE Id = @teamId AND (UniformHome = @uniform OR UniformAway = @uniform))", new {teamId, uniform});
     private async Task UpdateSend(Match match)
-		=> await _dbService.EditData(
-            @"UPDATE Matches SET date = @Date, arbitrator = @Arbitrator, homeuniform = @HomeUniform, 
-            visitoruniform = @VisitorUniform, Cep = @Cep, City = @City, Road = @Road, Number = @Number WHERE id=@id",
-            match);
+        => await _dbService.ExecuteInTransactionAsync(async (connection, transaction) =>
+        {
+            var currentVersion = await connection.ExecuteScalarAsync<int?>(
+                "SELECT version FROM matches WHERE id = @id FOR UPDATE",
+                new { id = match.Id },
+                transaction);
+
+            if (currentVersion is null)
+                throw new ApplicationException("Partida passada não existe.");
+
+            if (currentVersion.Value != match.Version)
+                throw new ApplicationException("Conflito: a partida foi atualizada por outra operação.");
+
+            var updatedId = await connection.ExecuteScalarAsync<int?>(
+                @"UPDATE Matches SET date = @Date, arbitrator = @Arbitrator, homeuniform = @HomeUniform,
+                visitoruniform = @VisitorUniform, Cep = @Cep, City = @City, Road = @Road, Number = @Number, version = version + 1 WHERE id=@id RETURNING id",
+                match,
+                transaction);
+
+            if (updatedId is null)
+                throw new ApplicationException("Conflito: a partida foi atualizada por outra operação.");
+
+            return updatedId.Value;
+        });
     public async Task ActiveProrrogationValidationAsync(int matchId)
     {
         var match = await GetMatchById(matchId);
@@ -1364,7 +1386,7 @@ public class MatchService
                 throw new ApplicationException("Partida precisa estar empatada para iniciar a prorrogação");
         }
         
-        await _dbService.EditData("UPDATE Matches SET Prorrogation = true WHERE id=@matchId", new {matchId});
+        await _dbService.EditData("UPDATE Matches SET Prorrogation = true, version = version + 1 WHERE id=@matchId", new {matchId});
     }
     public async Task<MatchDTO> GetMatchByIdValidation(int matchId)
     {
@@ -1380,6 +1402,7 @@ public class MatchService
             var home = await GetByTeamIdSendAsync(match.Home);
             var visitor = await GetByTeamIdSendAsync(match.Visitor);
             matchDTO.Id = match.Id;
+            matchDTO.Version = match.Version;
             matchDTO.IsSoccer = true;
             matchDTO.Prorrogation = match.Prorrogation;
             matchDTO.HomeEmblem = home.Emblem;
@@ -1411,6 +1434,7 @@ public class MatchService
             var homeTeam = await GetByTeamIdSendAsync(match.Home);
             var visitorTeam = await GetByTeamIdSendAsync(match.Visitor);
             matchDTO.Id = match.Id;
+            matchDTO.Version = match.Version;
             matchDTO.HomeEmblem = homeTeam.Emblem;
             matchDTO.HomeName = homeTeam.Name;
             matchDTO.Prorrogation = match.Prorrogation;
@@ -1813,7 +1837,7 @@ public class MatchService
     }
     private async Task AddMatchReportSend(Match match)
     {
-        await _dbService.EditData("UPDATE Matches SET MatchReport = @MatchReport WHERE id = @Id", match);
+        await _dbService.EditData("UPDATE Matches SET MatchReport = @MatchReport, version = version + 1 WHERE id = @Id", match);
     }
 
     public async Task<dynamic> GetAllEventsValidation(int matchId)
@@ -1987,11 +2011,13 @@ public class MatchService
                 {
                     var goal = new Goal();
                     goal.MatchId = match.Id;
+                    goal.MatchVersion = match.Version;
                     goal.PlayerTempId = player.Id;
                     goal.Minutes = 0;
                     goal.OwnGoal = true;
                     goal.TeamId = teamId != match.Visitor ? match.Visitor : match.Home;
                     await CreateGoalToPlayerTempSend(goal);
+                    match.Version++;
                 }
             }
 
@@ -2001,11 +2027,13 @@ public class MatchService
                 {
                     var goal = new Goal();
                     goal.MatchId = match.Id;
+                    goal.MatchVersion = match.Version;
                     goal.PlayerId = player.Id;
                     goal.TeamId = teamId != match.Visitor ? match.Visitor : match.Home;
                     goal.Minutes = 0;
                     goal.OwnGoal = true;
                     await CreateGoalToPlayerSend(goal);
+                    match.Version++;
                 }
             }
             
@@ -2027,11 +2055,13 @@ public class MatchService
                 {
                     var goal = new Goal();
                     goal.MatchId = match.Id;
+                    goal.MatchVersion = match.Version;
                     goal.PlayerTempId = player.Id;
                     goal.Minutes = 0;
                     goal.TeamId = teamId != match.Visitor ? match.Visitor : match.Home;
                     goal.OwnGoal = true;
                     await CreateGoalToPlayerTempSend(goal);
+                    match.Version += 1;
                 }
             }
 
@@ -2041,11 +2071,13 @@ public class MatchService
                 {
                     var goal = new Goal();
                     goal.MatchId = match.Id;
+                    goal.MatchVersion = match.Version;
                     goal.PlayerId = player.Id;
                     goal.Minutes = 0;
                     goal.TeamId = teamId != match.Visitor ? match.Visitor : match.Home;
                     goal.OwnGoal = true;
                     await CreateGoalToPlayerSend(goal);
+                    match.Version += 1;
                 }
             }
 
@@ -2063,11 +2095,13 @@ public class MatchService
                 {
                     var goal = new Goal();
                     goal.MatchId = match.Id;
+                    goal.MatchVersion = match.Version;
                     goal.PlayerTempId = player.Id;
                     goal.TeamId = teamId != match.Visitor ? match.Visitor : match.Home;
                     goal.Minutes = 0;
                     goal.OwnGoal = true;
                     await CreateGoalToPlayerTempSend(goal);
+                    match.Version += 1;
                 }
             }
 
@@ -2077,11 +2111,13 @@ public class MatchService
                 {
                     var goal = new Goal();
                     goal.MatchId = match.Id;
+                    goal.MatchVersion = match.Version;
                     goal.PlayerId = player.Id;
                     goal.TeamId = teamId != match.Visitor ? match.Visitor : match.Home;
                     goal.Minutes = 0;
                     goal.OwnGoal = true;
                     await CreateGoalToPlayerSend(goal);
+                    match.Version += 1;
                 }
             }
             await EndGameToKnockoutValidationAsync(matchId, false);
@@ -2202,7 +2238,7 @@ public class MatchService
                 throw new ApplicationException("Partida precisa estar empatada para iniciar a disputa de pênaltis");
         }
         
-        await _dbService.EditData("UPDATE Matches SET Penalties = true WHERE id=@matchId", new {matchId});
+        await _dbService.EditData("UPDATE Matches SET Penalties = true, version = version + 1 WHERE id=@matchId", new {matchId});
     }
 
     private async Task DispatchMatchEndedEvent(int matchId, int championshipId)

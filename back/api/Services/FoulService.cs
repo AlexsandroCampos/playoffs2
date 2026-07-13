@@ -1,6 +1,7 @@
 using PlayOffsApi.Models;
 using PlayOffsApi.Validations;
 using Dapper;
+using Npgsql;
 using System.Text.Json;
 
 namespace PlayOffsApi.Services;
@@ -65,11 +66,15 @@ public class FoulService
             {
                 foul.Considered = false;
                 foul.Valid = false;
+                foul.MatchVersion = match.Version;
                 await CreateFoulToPlayerSend(foul);
+                match.Version++;
                 foul.Considered = true;
                 foul.YellowCard = false;
                 foul.Valid = true;
+                foul.MatchVersion = match.Version;
                 await CreateFoulToPlayerSend(foul);
+                match.Version++;
             }
 
             else
@@ -86,10 +91,12 @@ public class FoulService
                 {
                     var goal = new Goal();
                     goal.MatchId = match.Id;
+                    goal.MatchVersion = match.Version;
                     goal.PlayerId = player.Id;
                     goal.Minutes = foul.Minutes;
                     goal.OwnGoal = true;
                     await _goalService.CreateGoalValidationAsync(goal);
+                    match.Version++;
                 }
 
                 if(match.Round != 0 && championship.Format == Enum.Format.GroupStage)
@@ -108,11 +115,15 @@ public class FoulService
             {
                 foul.Considered = false;
                 foul.Valid = false;
+                foul.MatchVersion = match.Version;
                 await CreateFoulToPlayerTempSend(foul);
+                match.Version++;
                 foul.Considered = true;
                 foul.YellowCard = false;
                 foul.Valid = true;
+                foul.MatchVersion = match.Version;
                 await CreateFoulToPlayerTempSend(foul);
+                match.Version++;
             }
             else
             {
@@ -128,10 +139,12 @@ public class FoulService
                 {
                     var goal = new Goal();
                     goal.MatchId = match.Id;
+                    goal.MatchVersion = match.Version;
                     goal.PlayerTempId = playerTemp.Id;
                     goal.Minutes = foul.Minutes;
                     goal.OwnGoal = true;
                     await _goalService.CreateGoalValidationAsync(goal);
+                    match.Version++;
                 }
 
                 if(match.Round != 0 && championship.Format == Enum.Format.GroupStage)
@@ -238,6 +251,7 @@ public class FoulService
     {
         await _dbService.ExecuteInTransactionAsync(async (connection, transaction) =>
         {
+            await EnsureMatchVersionAsync(connection, transaction, foul.MatchId, foul.MatchVersion);
             var foulId = playerIsTemp 
                 ? await connection.ExecuteScalarAsync<int>("INSERT INTO Fouls (YellowCard, Considered, MatchId, PlayerTempId, Minutes, Valid) VALUES (@YellowCard, @Considered, @MatchId, @PlayerTempId, @Minutes, @Valid) RETURNING Id;", foul, transaction)
                 : await connection.ExecuteScalarAsync<int>("INSERT INTO Fouls (YellowCard, Considered, MatchId, PlayerId, Minutes, Valid) VALUES (@YellowCard, @Considered, @MatchId, @PlayerId, @Minutes, @Valid) RETURNING Id;", foul, transaction);
@@ -268,6 +282,25 @@ public class FoulService
             
             return foulId;
         });
+    }
+
+    private static async Task EnsureMatchVersionAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, int matchId, int expectedVersion)
+    {
+        var currentVersion = await connection.ExecuteScalarAsync<int?>(
+            "SELECT version FROM matches WHERE id = @matchId FOR UPDATE",
+            new { matchId },
+            transaction);
+
+        if (currentVersion is null)
+            throw new ApplicationException("Partida passada não existe");
+
+        if (currentVersion.Value != expectedVersion)
+            throw new ApplicationException("Conflito: a partida foi atualizada por outra operação.");
+
+        await connection.ExecuteAsync(
+            "UPDATE matches SET version = version + 1 WHERE id = @matchId",
+            new { matchId },
+            transaction);
     }
     
 }

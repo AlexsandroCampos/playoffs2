@@ -5,6 +5,7 @@ namespace PlayOffsApi.DTO;
 public class MatchDTO
 {
     public int Id { get; set; }
+    public int Version { get; set; }
     public string HomeName { get; set; }
     public string VisitorName { get; set; }
     public string HomeEmblem { get; set; }

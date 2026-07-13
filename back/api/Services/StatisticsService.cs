@@ -294,6 +294,7 @@ public class StatisticsService
                 continue;
             
             matchDTO.Id = match.Id;
+            matchDTO.Version = match.Version;
             matchDTO.HomeEmblem = homeTeam.Emblem;
             matchDTO.HomeName = homeTeam.Name;
             matchDTO.HomeId = match.Home;
@@ -325,6 +326,7 @@ public class StatisticsService
             var homeTeam = await GetByTeamIdSendAsync(match.Home);
             var visitorTeam = await GetByTeamIdSendAsync(match.Visitor);
             matchDTO.Id = match.Id;
+            matchDTO.Version = match.Version;
             matchDTO.HomeId = match.Home;
             matchDTO.HomeEmblem = homeTeam.Emblem;
             matchDTO.HomeName = homeTeam.Name;

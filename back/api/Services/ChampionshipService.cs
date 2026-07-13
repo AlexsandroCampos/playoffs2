@@ -294,6 +294,7 @@ public class ChampionshipService
 					continue;
 				
 				matchDTO.Id = match.Id;
+				matchDTO.Version = match.Version;
 				matchDTO.IsSoccer = true;
 				matchDTO.HomeEmblem = home.Emblem;
 				matchDTO.HomeName = home.Name;
@@ -324,6 +325,7 @@ public class ChampionshipService
 				var homeTeam = await GetByTeamIdSendAsync(match.Home);
 				var visitorTeam = await GetByTeamIdSendAsync(match.Visitor);
 				matchDTO.Id = match.Id;
+				matchDTO.Version = match.Version;
 				matchDTO.HomeEmblem = homeTeam.Emblem;
 				matchDTO.HomeName = homeTeam.Name;
 				matchDTO.HomeId = homeTeam.Id;
@@ -445,6 +447,7 @@ public class ChampionshipService
 				var home = await GetByTeamIdSendAsync(match.Home);
 				var visitor = await GetByTeamIdSendAsync(match.Visitor);
 				matchDTO.Id = match.Id;
+				matchDTO.Version = match.Version;
 				matchDTO.IsSoccer = true;
 				matchDTO.HomeEmblem = home.Emblem;
 				matchDTO.HomeName = home.Name;
@@ -475,6 +478,7 @@ public class ChampionshipService
 			var homeTeam = await GetByTeamIdSendAsync(match.Home);
 			var visitorTeam = await GetByTeamIdSendAsync(match.Visitor);
 			matchDTO.Id = match.Id;
+				matchDTO.Version = match.Version;
 			matchDTO.HomeEmblem = homeTeam.Emblem;
 			matchDTO.HomeName = homeTeam.Name;
 			matchDTO.HomeId = homeTeam.Id;

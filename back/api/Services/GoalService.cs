@@ -267,6 +267,7 @@ public class GoalService
     {
         return await _dbService.ExecuteInTransactionAsync(async (connection, transaction) =>
         {
+            await EnsureMatchVersionAsync(connection, transaction, goal.MatchId, goal.MatchVersion);
             var goalId = await InsertGoalAsync(connection, transaction, goal, playerIsTemp);
             var championshipId = await GetChampionshipIdByMatchIdAsync(connection, transaction, goal.MatchId);
 
@@ -352,6 +353,25 @@ RETURNING id;";
 			"INSERT INTO goals (MatchId, TeamId, PlayerId, PlayerTempId, Set, OwnGoal, AssisterPlayerId, AssisterPlayerTempId, Minutes, Date) VALUES (@MatchId, @TeamId, @PlayerId, null, @Set, @OwnGoal, null, null, @Minutes, @Date) RETURNING Id;",
 			goal,
 			transaction);
+    }
+
+    private static async Task EnsureMatchVersionAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, int matchId, int expectedVersion)
+    {
+        var currentVersion = await connection.ExecuteScalarAsync<int?>(
+            "SELECT version FROM matches WHERE id = @matchId FOR UPDATE",
+            new { matchId },
+            transaction);
+
+        if (currentVersion is null)
+            throw new ApplicationException("Partida passada não existe");
+
+        if (currentVersion.Value != expectedVersion)
+            throw new ApplicationException("Conflito: a partida foi atualizada por outra operação.");
+
+        await connection.ExecuteAsync(
+            "UPDATE matches SET version = version + 1 WHERE id = @matchId",
+            new { matchId },
+            transaction);
     }
 
     private static async Task<int> GetChampionshipIdByMatchIdAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, int matchId)
@@ -594,7 +614,7 @@ RETURNING id;";
         return id;
     }
     private async Task<int> UpdateMatchToDefineWinner(int teamId, int matchId)
-        => await _dbService.EditData("UPDATE matches SET Winner = @teamId WHERE id = @matchId returning id", new {teamId, matchId});
+        => await _dbService.EditData("UPDATE matches SET Winner = @teamId, version = version + 1 WHERE id = @matchId returning id", new {teamId, matchId});
     
     private async Task<Match> GetMatchById(int matchId)
         => await _dbService.GetAsync<Match>("SELECT * FROM matches WHERE id = @matchId", new{matchId});
