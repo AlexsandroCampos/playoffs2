@@ -16,6 +16,29 @@ public class StatisticsService
     }
     public async Task<List<ClassificationDTO>> GetClassificationsValidationAsync(int championshipId)
     {
+        // ====================================================================
+        // TAREFA D e C: BUSCA NO REDIS PRIMEIRO E PROTEGIDA POR TRY/CATCH
+        // ====================================================================
+        try
+        {
+            await using var redisDb = await _redisService.GetDatabase();
+            var standingsJsonData = await redisDb.GetValueAsync($"championship:{championshipId}:standings");
+
+            if (!string.IsNullOrEmpty(standingsJsonData))
+            {
+                // Se o Worker já montou a classificação no background, devolvemos na hora!
+                return JsonSerializer.Deserialize<List<ClassificationDTO>>(standingsJsonData, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new List<ClassificationDTO>();
+            }
+        }
+        catch (Exception)
+        {
+            // REDIS FORA DO AR (OU ERRO DE REDE). Engole o erro e prossegue silenciosamente para o Fallback.
+        }
+
+        // ====================================================================
+        // FALLBACK: SE O REDIS ESTIVER VAZIO OU CAÍDO, VALIDA E EXECUTA O CÓDIGO PESADO
+        // ====================================================================
+        
         var championship = await GetChampionshipByIdSend(championshipId);
 
         if(championship is null)
@@ -24,27 +47,21 @@ public class StatisticsService
         if(championship.Format == Enum.Format.Knockout)
             throw new ApplicationException("Estatísticas apenas para pontos corridos ou fase de grupos");
 
-        // ====================================================================
-        // OTIMIZAÇÃO FINAL (ENDGAME): LÊ A TABELA COMPLETA DO REDIS (~2ms)
-        // ====================================================================
-        await using var redisDatabase = await _redisService.GetDatabase();
-        var standingsJson = await redisDatabase.GetValueAsync($"championship:{championshipId}:standings");
-
-        if (!string.IsNullOrEmpty(standingsJson))
+        // Mantemos a leitura do cache de cartões para ajudar no Fallback, também blindada
+        var cachedCards = new List<CardDTO>();
+        try
         {
-            // Se o Worker já montou a classificação no background, devolvemos na hora!
-            return JsonSerializer.Deserialize<List<ClassificationDTO>>(standingsJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new List<ClassificationDTO>();
+            await using var redisCards = await _redisService.GetDatabase();
+            var cardsJson = await redisCards.GetValueAsync($"championship:{championshipId}:cards");
+            if (!string.IsNullOrEmpty(cardsJson))
+            {
+                cachedCards = JsonSerializer.Deserialize<List<CardDTO>>(cardsJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new List<CardDTO>();
+            }
         }
-
-        // ====================================================================
-        // FALLBACK: SE O REDIS ESTIVER VAZIO, EXECUTA O CÓDIGO PESADO
-        // ====================================================================
-        
-        // Mantemos a leitura do cache de cartões para ajudar no Fallback
-        var cardsJson = await redisDatabase.GetValueAsync($"championship:{championshipId}:cards");
-        var cachedCards = string.IsNullOrEmpty(cardsJson) 
-            ? new List<CardDTO>() 
-            : JsonSerializer.Deserialize<List<CardDTO>>(cardsJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        catch (Exception)
+        {
+            // Se o Redis não responder, a lista de cartões em cache continua vazia e o sistema usa o banco.
+        }
         
         if(championship.SportsId == Sports.Football)
         {
@@ -660,23 +677,34 @@ public class StatisticsService
     
     public async Task<List<StrikerDTO>> GetStrikersValidationAsync(int championshipId)
     {
+        // ====================================================================
+        // TAREFA D e C: BUSCA NO REDIS PRIMEIRO E PROTEGIDA POR TRY/CATCH
+        // ====================================================================
+        try
+        {
+            await using var redisStrikersDb = await _redisService.GetDatabase();
+            var redisKeyString = $"championship:{championshipId}:strikers"; 
+            var cachedStrikersData = await redisStrikersDb.GetValueAsync(redisKeyString);
+
+            if (!string.IsNullOrEmpty(cachedStrikersData))
+            {
+                // Se achou no Redis, converte e retorna imediatamente!
+                return JsonSerializer.Deserialize<List<StrikerDTO>>(cachedStrikersData, new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new List<StrikerDTO>();
+            }
+        }
+        catch (Exception)
+        {
+            // REDIS FORA DO AR (OU ERRO DE REDE). Engole o erro e prossegue pro banco.
+        }
+
+        // ====================================================================
+        // FALLBACK: SE O REDIS ESTIVER VAZIO OU CAÍDO, VALIDA E RODA A LÓGICA DO POSTGRES
+        // ====================================================================
         var championship = await GetChampionshipByIdSend(championshipId);
 
         if(championship is null)
             throw new ApplicationException("Campeonato não existe");
 
-        await using var redisDatabase = await _redisService.GetDatabase();
-        var redisKey = $"championship:{championshipId}:strikers"; 
-        var cachedStrikersJson = await redisDatabase.GetValueAsync(redisKey);
-
-        if (!string.IsNullOrEmpty(cachedStrikersJson))
-        {
-            Console.WriteLine("JSON DO REDIS: " + cachedStrikersJson);
-            // Se achou no Redis, converte de volta para a lista e retorna imediatamente!
-            return JsonSerializer.Deserialize<List<StrikerDTO>>(cachedStrikersJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-        }
-
-        // 2. FALLBACK: SE O REDIS ESTIVER VAZIO, RODA A LÓGICA ANTIGA DO POSTGRES
         var strikers = new List<StrikerDTO>();
         
         var players = await _dbService.GetAll<PlayerGoalsSummaryDTO>(

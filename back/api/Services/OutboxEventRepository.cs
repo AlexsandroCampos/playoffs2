@@ -20,7 +20,7 @@ public interface IOutboxEventRepository
 
 public sealed class OutboxEventRepository : IOutboxEventRepository
 {
-    private const int MaxAttempts = 5;
+    private const int MaxAttempts = 900;
     private readonly string _connectionString;
 
     public OutboxEventRepository(IConfiguration configuration, IWebHostEnvironment environment)
