@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "fp29I789oErthRXwWU/p3dGo1VhuDi0drvJPGw5hLwWQxD6AUgwuHa24uqQd4u/r9x0IRSoMhCj2WvuDeQjlkQ==",
+  "dgSpecHash": "4TfaofzXrWe5Sidlgizrza+KaketVK1eD0wn9Yoz0w6Ld1lkd3IfAU6vApHPTJtK4UIcyXe67PozM2Iz2T1/SA==",
   "success": true,
-  "projectFilePath": "C:\\Users\\Alex\\Documents\\faculdade\\semestre_5\\bd2\\worker\\PlayOffs.Worker.csproj",
+  "projectFilePath": "C:\\Users\\Alex\\Documents\\faculdade\\semestre_5\\bd2\\back\\worker\\PlayOffs.Worker.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\Alex\\.nuget\\packages\\dapper\\2.1.79\\dapper.2.1.79.nupkg.sha512",
     "C:\\Users\\Alex\\.nuget\\packages\\microsoft.bcl.asyncinterfaces\\10.0.8\\microsoft.bcl.asyncinterfaces.10.0.8.nupkg.sha512",
