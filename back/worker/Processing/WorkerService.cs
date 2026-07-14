@@ -33,7 +33,8 @@ public sealed class WorkerService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        await InitializeRabbitAsync(stoppingToken);
+        // Usa o novo loop de reconexão inicial
+        await ConnectWithRetryAsync(stoppingToken);
 
         _logger.LogInformation(
             "Worker started consuming {Queue} from exchange {Exchange}",
@@ -44,33 +45,70 @@ public sealed class WorkerService : BackgroundService
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                var processedCount = 0;
-
-                for (var index = 0; index < _options.BatchSize && !stoppingToken.IsCancellationRequested; index++)
+                try
                 {
-                    var result = await _channel!.BasicGetAsync(
-                        queue: _options.RabbitMq.Queue,
-                        autoAck: false,
-                        cancellationToken: stoppingToken);
+                    var processedCount = 0;
 
-                    if (result is null)
+                    for (var index = 0; index < _options.BatchSize && !stoppingToken.IsCancellationRequested; index++)
                     {
-                        break;
+                        var result = await _channel!.BasicGetAsync(
+                            queue: _options.RabbitMq.Queue,
+                            autoAck: false,
+                            cancellationToken: stoppingToken);
+
+                        if (result is null)
+                        {
+                            break;
+                        }
+
+                        processedCount++;
+                        await HandleMessageAsync(result, stoppingToken);
                     }
 
-                    processedCount++;
-                    await HandleMessageAsync(result, stoppingToken);
+                    if (processedCount == 0)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(_options.PollIntervalSeconds), stoppingToken);
+                    }
                 }
-
-                if (processedCount == 0)
+                catch (Exception ex)
                 {
-                    await Task.Delay(TimeSpan.FromSeconds(_options.PollIntervalSeconds), stoppingToken);
+                    // Captura qualquer erro de TCP/RabbitMQ (ChannelClosed, IOException, etc)
+                    _logger.LogError(ex, "Erro de conexão ou falha crítica no loop do RabbitMQ. Iniciando reconexão automática...");
+                    
+                    // Bloqueia a execução até conseguir voltar
+                    await ConnectWithRetryAsync(stoppingToken);
                 }
             }
         }
         finally
         {
             await CleanupAsync();
+        }
+    }
+
+    private async Task ConnectWithRetryAsync(CancellationToken stoppingToken)
+    {
+        var delay = TimeSpan.FromSeconds(2);
+        var maxDelay = TimeSpan.FromSeconds(30);
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                await CleanupAsync(); // Limpa as conexões mortas antes de tentar novamente
+                await InitializeRabbitAsync(stoppingToken);
+                
+                _logger.LogInformation("Conexão com RabbitMQ estabelecida com sucesso.");
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Falha ao conectar no RabbitMQ. Tentando novamente em {Delay}s...", delay.TotalSeconds);
+                await Task.Delay(delay, stoppingToken);
+                
+                delay = delay * 2;
+                if (delay > maxDelay) delay = maxDelay;
+            }
         }
     }
 
@@ -145,8 +183,18 @@ public sealed class WorkerService : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unexpected error while processing RabbitMQ message. Message will be requeued.");
-            await _channel!.BasicNackAsync(result.DeliveryTag, multiple: false, requeue: true, cancellationToken: stoppingToken);
+            _logger.LogError(ex, "Unexpected error while processing RabbitMQ message. Message will be requeued if possible.");
+            
+            // Se a exceção for queda de conexão, o Nack também vai falhar.
+            // Repassamos para o catch principal para não mascarar a exceção de rede.
+            if (_channel is not null && _channel.IsOpen)
+            {
+                await _channel.BasicNackAsync(result.DeliveryTag, multiple: false, requeue: true, cancellationToken: stoppingToken);
+            }
+            else
+            {
+                throw; 
+            }
         }
         finally
         {
@@ -156,16 +204,23 @@ public sealed class WorkerService : BackgroundService
 
     private async Task CleanupAsync()
     {
-        if (_channel is not null)
+        try 
         {
-            await _channel.CloseAsync();
-            _channel.Dispose();
-        }
+            if (_channel is not null)
+            {
+                await _channel.CloseAsync();
+                _channel.Dispose();
+            }
 
-        if (_connection is not null)
+            if (_connection is not null)
+            {
+                await _connection.CloseAsync();
+                _connection.Dispose();
+            }
+        }
+        catch 
         {
-            await _connection.CloseAsync();
-            _connection.Dispose();
+            // Ignoramos erros no cleanup para não prender o loop de reconexão
         }
     }
 }

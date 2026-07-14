@@ -144,6 +144,7 @@ CREATE TABLE IF NOT EXISTS matches (
     winner INT,
     home INT,
     visitor INT,
+    version INT NOT NULL DEFAULT 1,
     arbitrator VARCHAR(255),
     championshipid INT,
     date TIMESTAMP,

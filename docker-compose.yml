@@ -61,6 +61,7 @@ services:
       context: ./back/api
       dockerfile: Dockerfile
     container_name: playoffs-api
+    restart: unless-stopped
     ports:
       - "5000:5000"
     depends_on:
@@ -97,6 +98,7 @@ services:
       context: ./back/worker
       dockerfile: Dockerfile
     container_name: playoffs-worker
+    restart: unless-stopped
     depends_on:
       rabbitmq:
         condition: service_healthy

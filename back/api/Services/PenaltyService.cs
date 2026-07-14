@@ -1,6 +1,8 @@
+using Dapper;
 using PlayOffsApi.Enum;
 using PlayOffsApi.Models;
 using PlayOffsApi.Validations;
+using Npgsql;
 
 namespace PlayOffsApi.Services;
 
@@ -197,13 +199,9 @@ public class PenaltyService
     private async Task<bool> CheckIfThereIsWinner(int matchId)
         => await _dbService.GetAsync<bool>("SELECT EXISTS(SELECT * FROM matches WHERE id = @matchId AND Winner IS NOT NULL)", new {matchId});
     private async Task<int> CreatePenaltyToPlayerTempSend(Penalty penalty)
-        => await _dbService.EditData(
-			"INSERT INTO penalties (MatchId, TeamId, PlayerId, PlayerTempId, Converted) VALUES (@MatchId, @TeamId, null, @PlayerTempId, @Converted) RETURNING Id;",
-			penalty);
+        => await CreatePenaltyWithVersionAsync(penalty, true);
     private async Task<int> CreatePenaltyToPlayerSend(Penalty penalty)
-        => await _dbService.EditData(
-			"INSERT INTO penalties (MatchId, TeamId, PlayerId, PlayerTempId, Converted) VALUES (@MatchId, @TeamId, @PlayerId, null, @Converted) RETURNING Id;",
-			penalty);
+        => await CreatePenaltyWithVersionAsync(penalty, false);
     private async Task<List<Penalty>> GetPenaltiesByTeamIdAndMatchId(int teamId, int matchId)
         => await _dbService.GetAll<Penalty>("SELECT * FROM penalties WHERE TeamId = @teamId AND MatchId = @matchId;", new {teamId, matchId});
     // private async Task<int> DefineWinner(int teamId, int matchId)
@@ -302,13 +300,13 @@ public class PenaltyService
     {
         if(teamId == 0)
         {
-            return await _dbService.EditData("UPDATE matches SET Tied = true WHERE id = @matchId returning id", new {teamId, matchId});
+            return await _dbService.EditData("UPDATE matches SET Tied = true, version = version + 1 WHERE id = @matchId returning id", new {teamId, matchId});
         }
-        return await _dbService.EditData("UPDATE matches SET Winner = @teamId WHERE id = @matchId returning id", new {teamId, matchId});
+        return await _dbService.EditData("UPDATE matches SET Winner = @teamId, version = version + 1 WHERE id = @matchId returning id", new {teamId, matchId});
     }
     private async Task UpdateMatchToDefineTie(int matchId)
     {
-        await _dbService.EditData("UPDATE matches SET Tied = true WHERE Id = @matchId", new {matchId});
+        await _dbService.EditData("UPDATE matches SET Tied = true, version = version + 1 WHERE Id = @matchId", new {matchId});
     }
     private async Task<bool> CheckIfMatchesOfCurrentPhaseHaveEnded(int championshipId, Phase phase)
     {
@@ -347,6 +345,39 @@ public class PenaltyService
             return true;
         }
         return false;
+    }
+
+    private async Task<int> CreatePenaltyWithVersionAsync(Penalty penalty, bool playerIsTemp)
+    {
+        return await _dbService.ExecuteInTransactionAsync(async (connection, transaction) =>
+        {
+            await EnsureMatchVersionAsync(connection, transaction, penalty.MatchId, penalty.MatchVersion);
+
+            var penaltyId = playerIsTemp
+                ? await connection.ExecuteScalarAsync<int>("INSERT INTO penalties (MatchId, TeamId, PlayerId, PlayerTempId, Converted) VALUES (@MatchId, @TeamId, null, @PlayerTempId, @Converted) RETURNING Id;", penalty, transaction)
+                : await connection.ExecuteScalarAsync<int>("INSERT INTO penalties (MatchId, TeamId, PlayerId, PlayerTempId, Converted) VALUES (@MatchId, @TeamId, @PlayerId, null, @Converted) RETURNING Id;", penalty, transaction);
+
+            return penaltyId;
+        });
+    }
+
+    private static async Task EnsureMatchVersionAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, int matchId, int expectedVersion)
+    {
+        var currentVersion = await connection.ExecuteScalarAsync<int?>(
+            "SELECT version FROM matches WHERE id = @matchId FOR UPDATE",
+            new { matchId },
+            transaction);
+
+        if (currentVersion is null)
+            throw new ApplicationException("Partida passada não existe");
+
+        if (currentVersion.Value != expectedVersion)
+            throw new ApplicationException("Conflito: a partida foi atualizada por outra operação.");
+
+        await connection.ExecuteAsync(
+            "UPDATE matches SET version = version + 1 WHERE id = @matchId",
+            new { matchId },
+            transaction);
     }
 
     private async Task<bool> CheckIfPlayerTempHasAlreadyTakenPenalty(Guid playerTempId, int teamId, int matchId)

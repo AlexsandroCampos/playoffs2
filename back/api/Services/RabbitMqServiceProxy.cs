@@ -2,41 +2,36 @@ using RabbitMQ.Client;
 
 namespace PlayOffsApi.Services
 {
-    /// <summary>
-    /// Proxy wrapper for RabbitMQ service that handles lazy async initialization
-    /// </summary>
     public class RabbitMqServiceProxy : IRabbitMqService
     {
-        private readonly Lazy<Task<IRabbitMqService>> _serviceFactory;
+        private readonly Func<Task<IRabbitMqService>> _serviceFactory;
         private IRabbitMqService _realService;
-        private readonly object _syncLock = new();
-        private volatile bool _initialized = false;
+        private readonly SemaphoreSlim _lock = new(1, 1);
 
-        public RabbitMqServiceProxy(Lazy<Task<IRabbitMqService>> serviceFactory)
+        public RabbitMqServiceProxy(Func<Task<IRabbitMqService>> serviceFactory)
         {
             _serviceFactory = serviceFactory;
         }
 
         private async Task<IRabbitMqService> EnsureInitializedAsync()
         {
-            if (_initialized && _realService != null)
+            if (_realService != null)
+                return _realService;
+
+            await _lock.WaitAsync();
+            try
             {
+                if (_realService != null)
+                    return _realService;
+
+                // Chama a fábrica DE NOVO a cada tentativa — nunca reaproveita uma tentativa que falhou
+                _realService = await _serviceFactory();
                 return _realService;
             }
-
-            lock (_syncLock)
+            finally
             {
-                if (_initialized && _realService != null)
-                {
-                    return _realService;
-                }
-
-                // Initialize synchronously from the already-started task
-                _realService = _serviceFactory.Value.GetAwaiter().GetResult();
-                _initialized = true;
+                _lock.Release();
             }
-
-            return _realService;
         }
 
         public async Task PublishMessageAsync(string message)
@@ -48,9 +43,7 @@ namespace PlayOffsApi.Services
         public async Task DisposeAsync()
         {
             if (_realService != null)
-            {
                 await _realService.DisposeAsync();
-            }
         }
     }
 }

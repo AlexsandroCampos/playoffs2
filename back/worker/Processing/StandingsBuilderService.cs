@@ -47,7 +47,18 @@ public class StandingsBuilderService
     private async Task<List<ClassificationDTO>> GetClassificationsValidationAsync(int championshipId)
     {
         var championship = await GetChampionshipByIdSend(championshipId);
-        if (championship is null || championship.Format == Enum.Format.Knockout) return new();
+        if (championship is null)
+        {
+            // Isso é um erro de verdade — não devia acontecer nunca. Melhor gritar do que sumir.
+            throw new ApplicationException($"Campeonato {championshipId} não encontrado ao calcular classificação.");
+        }
+
+        if (championship.Format == Enum.Format.Knockout)
+        {
+            // Isso é esperado (mata-mata não tem classificação) — mas sinalizamos com null,
+            // para o handler saber que não deve sobrescrever nada no Redis.
+            return null;
+        }
 
         // Lê os cartões do Redis direto no background!
         var dbRedis = _redis.GetDatabase();

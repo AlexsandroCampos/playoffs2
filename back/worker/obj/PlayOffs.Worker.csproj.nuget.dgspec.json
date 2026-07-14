@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\Alex\\Documents\\faculdade\\semestre_5\\bd2\\worker\\PlayOffs.Worker.csproj": {}
+    "C:\\Users\\Alex\\Documents\\faculdade\\semestre_5\\bd2\\back\\worker\\PlayOffs.Worker.csproj": {}
   },
   "projects": {
-    "C:\\Users\\Alex\\Documents\\faculdade\\semestre_5\\bd2\\worker\\PlayOffs.Worker.csproj": {
+    "C:\\Users\\Alex\\Documents\\faculdade\\semestre_5\\bd2\\back\\worker\\PlayOffs.Worker.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\Alex\\Documents\\faculdade\\semestre_5\\bd2\\worker\\PlayOffs.Worker.csproj",
+        "projectUniqueName": "C:\\Users\\Alex\\Documents\\faculdade\\semestre_5\\bd2\\back\\worker\\PlayOffs.Worker.csproj",
         "projectName": "PlayOffs.Worker",
-        "projectPath": "C:\\Users\\Alex\\Documents\\faculdade\\semestre_5\\bd2\\worker\\PlayOffs.Worker.csproj",
+        "projectPath": "C:\\Users\\Alex\\Documents\\faculdade\\semestre_5\\bd2\\back\\worker\\PlayOffs.Worker.csproj",
         "packagesPath": "C:\\Users\\Alex\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\Alex\\Documents\\faculdade\\semestre_5\\bd2\\worker\\obj\\",
+        "outputPath": "C:\\Users\\Alex\\Documents\\faculdade\\semestre_5\\bd2\\back\\worker\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\Alex\\AppData\\Roaming\\NuGet\\NuGet.Config"

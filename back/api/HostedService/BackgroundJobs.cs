@@ -14,9 +14,7 @@ public class BackgroundJobs : BackgroundService, IBackgroundJobsService
     private readonly IServiceScopeFactory _serviceScopeFactory;
     private IRedisSubscriptionAsync _subscription;
     private CancellationToken _cts;
-     private readonly ILogger<BackgroundJob> _logger;
-    // private const string BucketName = "playoffs-armazenamento";
-    // private readonly AWSCredentials _awsCredentials = new EnvironmentVariablesAWSCredentials();
+    private readonly ILogger<BackgroundJob> _logger;
     private readonly string _mountPath = Environment.GetEnvironmentVariable("MOUNT_PATH");
     private static readonly Dictionary<string, string> ContentTypeMappings = new()
     {
@@ -29,7 +27,6 @@ public class BackgroundJobs : BackgroundService, IBackgroundJobsService
         { "application/pdf", ".pdf" }
     };
 
-    // private AmazonS3Client GetClient => new(_awsCredentials, RegionEndpoint.SAEast1);
     public BackgroundJobs(RedisService redisService, IServiceScopeFactory serviceScopeFactory, ILogger<BackgroundJob> logger)
     {
         _redisService = redisService;
@@ -46,25 +43,51 @@ public class BackgroundJobs : BackgroundService, IBackgroundJobsService
 
     private async Task StartBackgroundJobs()
     {
-        await using var dataBase = await _redisService.GetDatabase();
-        _subscription = await dataBase.CreateSubscriptionAsync(_cts);
+        var delay = TimeSpan.FromSeconds(2);
+        var maxDelay = TimeSpan.FromSeconds(30);
 
-        _subscription.OnMessageAsync += async (channel, message) => {
+        while (!_cts.IsCancellationRequested)
+        {
             try
             {
-                var jobDeserialized = JsonSerializer.Deserialize<BackgroundJob>(message);
+                await using var dataBase = await _redisService.GetDatabase();
+                _subscription = await dataBase.CreateSubscriptionAsync(_cts);
 
-                ExecuteBackgroundJob(jobDeserialized);
+                _subscription.OnMessageAsync += async (channel, message) => {
+                    try
+                    {
+                        var jobDeserialized = JsonSerializer.Deserialize<BackgroundJob>(message);
+                        if (jobDeserialized != null)
+                        {
+                            await ExecuteBackgroundJob(jobDeserialized);
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        using var scope = _serviceScopeFactory.CreateScope();
+                        var error = scope.ServiceProvider.GetRequiredService<ErrorLogService>();
+                        await error.HandleExceptionValidationAsync(new DefaultHttpContext(), e);
+                    }
+                };
+
+                _logger.LogInformation("Subscrição do Redis Pub/Sub estabelecida com sucesso.");
+                
+                // Esta chamada bloqueia a execução enquanto a subscrição estiver ativa.
+                // Se a conexão com o Redis cair, ela lançará uma exceção ou sairá do método.
+                await _subscription.SubscribeToChannelsAsync("jobs");
+
+                // Reset do delay caso saia de forma limpa (raro)
+                delay = TimeSpan.FromSeconds(2);
             }
-            catch (Exception e)
+            catch (Exception ex)
             {
-                using var scope = _serviceScopeFactory.CreateScope();
-                var error = scope.ServiceProvider.GetRequiredService<ErrorLogService>();
-                await error.HandleExceptionValidationAsync(new DefaultHttpContext(), e);
+                _logger.LogWarning(ex, "Falha na conexão do Redis Pub/Sub. Tentando novamente em {Delay}s...", delay.TotalSeconds);
+                await Task.Delay(delay, _cts);
+                
+                delay = delay * 2;
+                if (delay > maxDelay) delay = maxDelay;
             }
-        };
-
-        await _subscription.SubscribeToChannelsAsync("jobs");
+        }
     }
 
     private async Task ExecuteBackgroundJob(BackgroundJob jobDeserialized)
@@ -83,30 +106,38 @@ public class BackgroundJobs : BackgroundService, IBackgroundJobsService
 
     public async Task EnqueueJob(Expression<Func<Task>> methodExpression, TimeSpan? period = null)
     {
-        var (methodName, parameters) = GetMethodDetails(methodExpression);
-        _logger.LogInformation("Nome do método: {methodName}", methodName);
-        _logger.LogInformation("Período: {period}", period);
-
-        var jobObject = new BackgroundJob
+        try
         {
-            MethodName = methodName, 
-            Params = parameters.Select(param => new BackgroundJobParameter { Type = param.GetType().AssemblyQualifiedName, Value = JsonSerializer.SerializeToElement(param, param.GetType()) }).ToArray(),
-        };
+            var (methodName, parameters) = GetMethodDetails(methodExpression);
+            _logger.LogInformation("Nome do método: {methodName}", methodName);
+            _logger.LogInformation("Período: {period}", period);
 
-        var jobObjectSerialized = JsonSerializer.Serialize(jobObject);
-        await using var database = await _redisService.GetDatabase();
-        if (period is null)
-        {
-            await database.PublishMessageAsync("jobs", jobObjectSerialized, _cts);
-            return;
+            var jobObject = new BackgroundJob
+            {
+                MethodName = methodName, 
+                Params = parameters.Select(param => new BackgroundJobParameter { Type = param.GetType().AssemblyQualifiedName, Value = JsonSerializer.SerializeToElement(param, param.GetType()) }).ToArray(),
+            };
+
+            var jobObjectSerialized = JsonSerializer.Serialize(jobObject);
+            await using var database = await _redisService.GetDatabase();
+            
+            if (period is null)
+            {
+                await database.PublishMessageAsync("jobs", jobObjectSerialized, _cts);
+                return;
+            }
+
+            var scheduledDate = DateTime.UtcNow.Add(period.Value);
+            _logger.LogInformation("scheduledDate: {scheduledDate} ", scheduledDate);
+
+            var unixTimestamp = (long)(scheduledDate - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalSeconds;
+            _logger.LogInformation("unixTimestamp: {unixTimestamp} ", unixTimestamp);
+            await database.AddItemToSortedSetAsync("scheduled_jobs", jobObjectSerialized, unixTimestamp, _cts);
         }
-
-        var scheduledDate = DateTime.UtcNow.Add(period.Value);
-        _logger.LogInformation("scheduledDate: {scheduledDate} ", scheduledDate);
-
-        var unixTimestamp = (long)(scheduledDate - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalSeconds;
-        _logger.LogInformation("unixTimestamp: {unixTimestamp} ", unixTimestamp);
-        await database.AddItemToSortedSetAsync("scheduled_jobs", jobObjectSerialized, unixTimestamp, _cts);
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Falha ao enfileirar job no Redis. (Se o Redis estiver indisponível, este erro é capturado para não afetar as regras de negócio).");
+        }
     }
     
     private static (string Name, object[] Parameters) GetMethodDetails(Expression<Func<Task>> expression)
@@ -138,23 +169,24 @@ public class BackgroundJobs : BackgroundService, IBackgroundJobsService
             await ExecuteBackgroundJob(job);
         }
     }
+    
     private async Task ExecutePeriodicallyAsync()
-{
-    while (true)
     {
-        try 
+        while (true)
         {
-            await DequeueDueJobsAsync();
+            try 
+            {
+                await DequeueDueJobsAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Erro no processamento dos jobs. O loop vai tentar novamente.");
+            }
+            
+            // await Task.Delay(TimeSpan.FromHours(4), _cts);
+            await Task.Delay(TimeSpan.FromSeconds(10), _cts);
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Erro no processamento dos jobs. O loop vai tentar novamente.");
-        }
-        
-        // await Task.Delay(TimeSpan.FromHours(4), _cts);
-        await Task.Delay(TimeSpan.FromSeconds(10), _cts);
     }
-}
 
     public async Task ChangeChampionshipStatusValidation(int championshipId, int status)
     {
@@ -215,44 +247,6 @@ public class BackgroundJobs : BackgroundService, IBackgroundJobsService
     private static async Task ChangeChampionshipStatusSend(int championshipId, ChampionshipStatus status, DbService dbService) 
         => await dbService.EditData("UPDATE championships SET status = @status WHERE id = @id", new { id = championshipId, status });
     
-    // public async Task DownloadFilesFromS3()
-    // {
-    //     var listRequest = new ListObjectsV2Request
-    //     {
-    //         BucketName = BucketName,
-    //         MaxKeys = 1000 
-    //     };
-    //
-    //     ListObjectsV2Response response;
-    //     using var client = GetClient;
-    //     do
-    //     {
-    //         response = await client.ListObjectsV2Async(listRequest, _cts);
-    //         foreach (var entry in response.S3Objects)
-    //             await DownloadFile(entry.Key, client);
-    //         
-    //         listRequest.ContinuationToken = response.NextContinuationToken;
-    //     } while (response.IsTruncated);
-    // }
-    //
-    // private async Task DownloadFile(string key, IAmazonS3 client)
-    // {
-    //     var getObjectMetadataRequest = new GetObjectMetadataRequest
-    //     {
-    //         BucketName = BucketName,
-    //         Key = key
-    //     };
-    //
-    //     var response = await client.GetObjectMetadataAsync(getObjectMetadataRequest, _cts);
-    //     var contentType = new ContentType(response.Headers["Content-Type"]);
-    //     var fileExtension = GetFileExtension(contentType);
-    //     var fileNameWithExtension = Path.GetFileNameWithoutExtension(key) + fileExtension;
-    //     var downloadPath = Path.Combine(_mountPath, fileNameWithExtension);
-    //
-    //     using var fileTransferUtility = new TransferUtility(client);
-    //     await fileTransferUtility.DownloadAsync(downloadPath, BucketName, key, _cts);
-    // }
-
     private static string GetFileExtension(ContentType type)
     {
         ContentTypeMappings.TryGetValue(type.MediaType, out var value);

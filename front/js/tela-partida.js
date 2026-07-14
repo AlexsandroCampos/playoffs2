@@ -89,6 +89,7 @@ const init = async () => {
 
 			await updateScoreboard()
 			await loadEvents()
+			await refreshMatchData()
 
 			blankSpaceSetter()
 		}
@@ -114,6 +115,7 @@ const init = async () => {
 			resetMatchManagementForm()
 
 			await loadEvents()
+			await refreshMatchData()
 		}
 	}
 
@@ -135,6 +137,7 @@ const init = async () => {
 
 			await loadEvents()
 			await loadPenaltiesScoreboard()
+			await refreshMatchData()
 
 			if (await hasMatchEnded()) {
 				window.location.reload()
@@ -246,6 +249,7 @@ const init = async () => {
 
 				const body = {
 					"Id": match.id,
+					"Version": match.version,
 					"MatchReport": hiddenInput.value
 				}
 
@@ -641,6 +645,7 @@ const init = async () => {
 										
 										const body = {
 											"MatchId": match.id,
+											"MatchVersion": match.version,
 											"TeamId": selectEventTeam.value,
 										}
 
@@ -808,6 +813,7 @@ const init = async () => {
 
 										const body = {
 											"MatchId": match.id,
+											"MatchVersion": match.version,
 											"TeamId": selectEventTeamCard.value,
 											"YellowCard": selectEventCardType.value === 'true',
 											"Minutes": parseInt(inputEventTime.value)
@@ -904,6 +910,7 @@ const init = async () => {
 
 										const body = {
 											"MatchId": match.id,
+											"MatchVersion": match.version,
 											"TeamId": selectEventTeamPenalty.value,
 											"Converted": checkboxEventPenaltyGoal.checked
 										}
@@ -1167,7 +1174,7 @@ const init = async () => {
 		: (campeonato.format == 4) ? 'end-game-group-stage' 
 		: ''
 
-		const configFetch = configuracaoFetch('PUT'),
+		const configFetch = configuracaoFetch('PUT', { Version: match.version }),
 			response = await executarFetch(`matches/${match.id}/${endpoint}`, configFetch, callbackStatus)
 
 		loader.hide()
@@ -1186,7 +1193,7 @@ const init = async () => {
 		}
 
 		loader.show()
-		const configFetch = configuracaoFetch('PUT'),
+		const configFetch = configuracaoFetch('PUT', { Version: match.version }),
 			response = await executarFetch(`matches/${match.id}/teams/${teamId}/wo`, configFetch, callbackStatus)
 
 		loader.hide()
@@ -1205,7 +1212,7 @@ const init = async () => {
 		}
 
 		loader.show()
-		const configFetch = configuracaoFetch('PUT'),
+		const configFetch = configuracaoFetch('PUT', { Version: match.version }),
 			response = await executarFetch(`matches/${match.id}/prorrogation`, configFetch, callbackStatus)
 
 		loader.hide()
@@ -1224,7 +1231,7 @@ const init = async () => {
 		}
 
 		loader.show()
-		const configFetch = configuracaoFetch('PUT'),
+		const configFetch = configuracaoFetch('PUT', { Version: match.version }),
 			response = await executarFetch(`matches/${match.id}/penalties`, configFetch, callbackStatus)
 
 		loader.hide()
@@ -1267,6 +1274,12 @@ const init = async () => {
 		if (match.isSoccer) {
 			return (match.prorrogation) ? true : false
 		}
+	}
+
+	const refreshMatchData = async () => {
+		const dataMatch = await executarFetch(`matches/${matchId}`, configuracaoFetch('GET'))
+		match = dataMatch.results
+		return match
 	}
 
 	const hasMatchEnded = async () => {
@@ -1676,7 +1689,7 @@ const init = async () => {
 
 
 	loader.show()
-	const 
+	let 
 		dataMatch = await executarFetch(`matches/${matchId}`, configuracaoFetch('GET')),
 		match = dataMatch.results
 	

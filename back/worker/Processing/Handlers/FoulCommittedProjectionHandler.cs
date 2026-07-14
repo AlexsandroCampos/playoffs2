@@ -72,9 +72,13 @@ public sealed class FoulCommittedProjectionHandler : IEventProjectionHandler
 
         // Também recalcula classificação (pois cartão pode afetar)
         var standingsJson = await _projectionQueries.BuildStandingsJsonAsync(championshipId.Value, ct);
-        if (!string.IsNullOrWhiteSpace(standingsJson))
+        if (!string.IsNullOrWhiteSpace(standingsJson) && standingsJson != "[]")
         {
             await _readModelStore.SaveStandingsAsync(championshipId.Value, standingsJson, ct);
+        }
+        else
+        {
+            _logger.LogWarning("BuildStandingsJsonAsync não retornou dados para o campeonato {ChampionshipId} — Redis não foi atualizado", championshipId.Value);
         }
 
         _logger.LogInformation(

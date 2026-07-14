@@ -1,5 +1,6 @@
 using System.Text.Json;
 using PlayOffsApi.Services;
+using RabbitMQ.Client.Exceptions;
 
 namespace PlayOffsApi.HostedService;
 
@@ -71,10 +72,17 @@ public sealed class OutboxPublisherHostedService : BackgroundService
             await _rabbitMqService.PublishMessageAsync(envelopeJson);
             await _outboxEvents.MarkPublishedAsync(outboxEvent.Id, stoppingToken);
         }
+        // 1. FALHAS TRANSITÓRIAS (Infraestrutura) -> Continua tentando com paciência
+        catch (Exception ex) when (ex is RabbitMQClientException || ex is IOException || ex is TimeoutException)
+        {
+            _logger.LogWarning(ex, "Falha de infraestrutura ao publicar o evento {EventId}. Será feita uma nova tentativa futuramente.", outboxEvent.Id);
+            await _outboxEvents.MarkFailedAsync(outboxEvent.Id, ex.Message, stoppingToken);
+        }
+        // 2. FALHAS PERMANENTES (Código/Dados) -> Desiste imediatamente
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Could not publish outbox event {EventId}", outboxEvent.Id);
-            await _outboxEvents.MarkFailedAsync(outboxEvent.Id, ex.Message, stoppingToken);
+            _logger.LogError(ex, "Erro fatal/não-recuperável ao processar o payload do evento {EventId}. Marcando como falha permanente.", outboxEvent.Id);
+            await _outboxEvents.MarkPermanentlyFailedAsync(outboxEvent.Id, ex.Message, stoppingToken);
         }
     }
 }

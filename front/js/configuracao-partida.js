@@ -474,6 +474,7 @@ const configureMatch = async (matchId, championshipData) => {
 
       const body = {
         Id: matchId,
+        Version: match.version,
         Cep: matchZipcode.value,
         City: matchCity.value,
         Road: matchRoad.value,
