@@ -7,7 +7,6 @@ namespace PlayOffsApi.Services;
 
 public class DbService
 {
-	private readonly IDbConnection _db;
 	private readonly string _connectionString;
 
 	public DbService(IConfiguration configuration, IWebHostEnvironment environment)
@@ -27,7 +26,6 @@ public class DbService
 		else connectionString = configuration.GetConnectionString("LOCALHOST");
 
 		_connectionString = connectionString;
-		_db = new NpgsqlConnection(connectionString);
 	}
 
 	public async Task<T> ExecuteInTransactionAsync<T>(Func<NpgsqlConnection, NpgsqlTransaction, Task<T>> action)
@@ -53,7 +51,9 @@ public class DbService
 	{
 		try
 		{
-			var result = (await _db.QueryAsync<T>(command, parms).ConfigureAwait(false)).FirstOrDefault();
+			await using var connection = new NpgsqlConnection(_connectionString);
+			await connection.OpenAsync();
+			var result = (await connection.QueryAsync<T>(command, parms).ConfigureAwait(false)).FirstOrDefault();
 
 			return result;
 		}
@@ -67,7 +67,9 @@ public class DbService
 	{
 		try
 		{
-			var result = (await _db.QueryAsync<T>(command, parms)).ToList();
+			await using var connection = new NpgsqlConnection(_connectionString);
+			await connection.OpenAsync();
+			var result = (await connection.QueryAsync<T>(command, parms)).ToList();
 
 			return result;
 		}
@@ -80,27 +82,27 @@ public class DbService
 
 	public async Task<int> EditData(string command, object parms)
 	{
-
 		try
 		{
-			var result = await _db.ExecuteScalarAsync<int>(command, parms);
+			await using var connection = new NpgsqlConnection(_connectionString);
+			await connection.OpenAsync();
+			var result = await connection.ExecuteScalarAsync<int>(command, parms);
 
 			return result;
 		}
 		catch (Exception)
-		
 		{
 			throw new ApplicationException(Resource.GenericErrorMessage);
 		}
-
 	}
 
 	public async Task<Guid> EditData2(string command, object parms)
 	{
-
 		try
 		{
-			var result = await _db.ExecuteScalarAsync<Guid>(command, parms);
+			await using var connection = new NpgsqlConnection(_connectionString);
+			await connection.OpenAsync();
+			var result = await connection.ExecuteScalarAsync<Guid>(command, parms);
 
 			return result;
 		}
@@ -108,7 +110,5 @@ public class DbService
 		{
 			throw new ApplicationException(Resource.GenericErrorMessage);
 		}
-
 	}
-
 }

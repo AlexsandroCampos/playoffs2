@@ -16,6 +16,7 @@ public interface IOutboxEventRepository
     Task<IReadOnlyList<OutboxEventRow>> ClaimPendingAsync(int batchSize, CancellationToken ct);
     Task MarkPublishedAsync(long eventId, CancellationToken ct);
     Task MarkFailedAsync(long eventId, string errorMessage, CancellationToken ct);
+    Task MarkPermanentlyFailedAsync(long id, string error, CancellationToken stoppingToken);
 }
 
 public sealed class OutboxEventRepository : IOutboxEventRepository
@@ -96,5 +97,17 @@ WHERE id = @eventId;";
             command,
             new { eventId, errorMessage, maxAttempts = MaxAttempts },
             cancellationToken: ct));
+    }
+
+    public async Task MarkPermanentlyFailedAsync(long id, string error, CancellationToken stoppingToken)
+    {
+        var sql = @"
+            UPDATE outbox_events 
+            SET status = 'Failed', 
+                last_error = @Error 
+            WHERE id = @Id";
+
+        await using var connection = new NpgsqlConnection(_connectionString);
+        await connection.ExecuteAsync(sql, new { Id = id, Error = error });
     }
 }

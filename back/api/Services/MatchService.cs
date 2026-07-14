@@ -1,4 +1,3 @@
-
 using Dapper;
 using FluentValidation;
 using Microsoft.AspNetCore.Routing.Tree;
@@ -28,405 +27,433 @@ public class MatchService
     public async Task EndGameToKnockoutValidationAsync(int matchId, bool valid)
     {
         var match = await GetMatchById(matchId);
-        if(match is null && valid)
-        {
-            throw new ApplicationException("Partida passada não existe.");
-        }
-        if(await DepartureDateNotSet(matchId) && valid)
-        {
-            throw new ApplicationException("Data da partida não definida.");
-        }
-        if(match.Date.ToUniversalTime() >= DateTime.UtcNow && valid)
-        {
-            throw new ApplicationException("Partida ainda não inciou");
-        }
-        if(match.Winner != 0 && valid)
-        {
-            throw new ApplicationException("Partida já possui um vencedor.");
-        }
+        if(match is null && valid) throw new ApplicationException("Partida passada não existe.");
+        if(await DepartureDateNotSet(matchId) && valid) throw new ApplicationException("Data da partida não definida.");
+        if(match.Date.ToUniversalTime() >= DateTime.UtcNow && valid) throw new ApplicationException("Partida ainda não inciou");
+        if(match.Winner != 0 && valid) throw new ApplicationException("Partida já possui um vencedor.");
 
         var championship = await GetByIdSend(match.ChampionshipId);
 
-        if((match.HomeUniform is null || match.VisitorUniform is null) && valid)
-            throw new ApplicationException("É necessário definir os uniformes das equipes antes");
-        
-        if (match.Road is null)
-            throw new ApplicationException("É necessário definir o local da partida antes antes");
+        if((match.HomeUniform is null || match.VisitorUniform is null) && valid) throw new ApplicationException("É necessário definir os uniformes das equipes antes");
+        if (match.Road is null) throw new ApplicationException("É necessário definir o local da partida antes antes");
 
-        if(championship.DoubleMatchEliminations && match.Phase != Phase.Finals || 
-        championship.FinalDoubleMatch && match.Phase == Phase.Finals)
+        var users = await GetAllUsersByTeamsId(match.Home, match.Visitor);
+        var tempUsers = await GetAllTempProfileByTeamsId(match.Home, match.Visitor);
+
+        int winnerTeamId = 0;
+
+        if(championship.DoubleMatchEliminations && match.Phase != Phase.Finals || championship.FinalDoubleMatch && match.Phase == Phase.Finals)
 		{
             var aggregateVisitorPoints = await GetPointsFromTeamByIdInTwoMatches(matchId, match.Visitor);
             var aggregateHomePoints = await GetPointsFromTeamByIdInTwoMatches(matchId, match.Home);
             if(match.PreviousMatch != 0 && valid)
             {
-                if(aggregateVisitorPoints == aggregateHomePoints && match.Winner == 0)
-                {
-                    throw new ApplicationException("Partida não pode ser encerrada sem um vencedor nos gols agregados.");
-                }
-                if(await CheckIfFirstMatchHasNotFinished(match.PreviousMatch))
-                {
-                    throw new ApplicationException("A primeira partida deve ser finalizada antes.");
-                }
+                if(aggregateVisitorPoints == aggregateHomePoints && match.Winner == 0) throw new ApplicationException("Partida não pode ser encerrada sem um vencedor nos gols agregados.");
+                if(await CheckIfFirstMatchHasNotFinished(match.PreviousMatch)) throw new ApplicationException("A primeira partida deve ser finalizada antes.");
             }
-            if(aggregateHomePoints > aggregateVisitorPoints)
-            {
-                await DefineWinner(match.Home, matchId);
-            }
-            else if(aggregateHomePoints < aggregateVisitorPoints)
-            {
-                await DefineWinner(match.Visitor, matchId);
-            } 
-            else 
-            {
-                await DefineWinner(0, matchId);
-            }
+            if(aggregateHomePoints > aggregateVisitorPoints) winnerTeamId = match.Home;
+            else if(aggregateHomePoints < aggregateVisitorPoints) winnerTeamId = match.Visitor;
         }
-
         else
 		{
             var visitorPoints = await GetPointsFromTeamById(matchId, match.Visitor);
             var homePoints = await GetPointsFromTeamById(matchId, match.Home);
-            if(homePoints > visitorPoints)
-            {
-                await DefineWinner(match.Home, matchId);
-            }
-            else if(homePoints < visitorPoints)
-            {
-                await DefineWinner(match.Visitor, matchId);
-            } 
-            else 
-            {
-                throw new ApplicationException("Partida não pode ser encerrada sem um vencedor.");
-            }
+            if(homePoints > visitorPoints) winnerTeamId = match.Home;
+            else if(homePoints < visitorPoints) winnerTeamId = match.Visitor;
+            else throw new ApplicationException("Partida não pode ser encerrada sem um vencedor.");
         }
 
-        var users = await GetAllUsersByTeamsId(match.Home, match.Visitor);
-        var tempUsers = await GetAllTempProfileByTeamsId(match.Home, match.Visitor);
-
-        foreach (var user in users)
+        // ====================================================================
+        // TRANSAÇÃO ATÔMICA: Match Update + Invalidação de Cartões + Outbox Event
+        // ====================================================================
+        await _dbService.ExecuteInTransactionAsync(async (conn, tr) => 
         {
-            await InvalidingUserCards(user, championship, match);
-        }
+            if (winnerTeamId == 0)
+                await conn.ExecuteAsync("UPDATE matches SET Tied = true, version = version + 1 WHERE id = @matchId", new { matchId = match.Id }, tr);
+            else
+                await conn.ExecuteAsync("UPDATE matches SET Winner = @teamId, version = version + 1 WHERE id = @matchId", new { teamId = winnerTeamId, matchId = match.Id }, tr);
 
-        foreach (var temp in tempUsers)
-        {
-            await InvalidingPlayerTempCards(temp, championship, match);
-        }
-        await DispatchMatchEndedEvent(match.Id, championship.Id);
+            foreach (var user in users)
+                await InvalidingUserCardsTx(user, championship, match, conn, tr);
+
+            foreach (var temp in tempUsers)
+                await InvalidingPlayerTempCardsTx(temp, championship, match, conn, tr);
+
+            await DispatchMatchEndedEventTx(match.Id, championship.Id, conn, tr);
+            return true;
+        });
+
+        // ====================================================================
+        // FORA DA TRANSAÇÃO: Lógica de progressão síncrona
+        // ====================================================================
+        await ProgressionKnockout(winnerTeamId, match.Id);
     }
+
     private async Task<List<User>> GetAllUsersByTeamsId(int id1, int id2)
         => await _dbService.GetAll<User>("SELECT * FROM Users WHERE PlayerTeamId = @id1 OR PlayerTeamId = @id2 AND accepted = true", new {id1, id2});
+    
     private async Task<List<PlayerTempProfile>> GetAllTempProfileByTeamsId(int id1, int id2)
         =>  await _dbService.GetAll<PlayerTempProfile>("SELECT * FROM PlayerTempProfiles WHERE TeamsId = @id1 OR TeamsId = @id2 AND accepted = true", new {id1, id2});
-    private async Task InvalidingUserCards(User user, Championship championship, Match match)
+    
+    private async Task InvalidingUserCardsTx(User user, Championship championship, Match match, NpgsqlConnection conn, NpgsqlTransaction tr)
     {
         if(match.Phase != 0)
         {
-            var redCard = await GetRedCardValid(championship.Id, user.Id);
+            var redCard = await GetRedCardValidTx(championship.Id, user.Id, conn, tr);
             var isNextMatch = false;
             if(redCard is not null)
             {
-                var previousMatch = await GetMatchById(redCard.MatchId);
+                var previousMatch = await GetMatchByIdTx(redCard.MatchId, conn, tr);
                 isNextMatch = CheckIfIsTheNextMatchToEliminations(previousMatch, match, user);
 
                 if(isNextMatch)
                 {
-                    await _dbService.EditData("UPDATE Fouls SET Valid = false WHERE Id = @id", new {id = redCard.Id});
+                    await conn.ExecuteAsync("UPDATE Fouls SET Valid = false WHERE Id = @id", new {id = redCard.Id}, tr);
                     return;
                 }
             }
               
-            var yellowCards = await GetLastYellowCardsValid(championship.Id, user.Id);
+            var yellowCards = await GetLastYellowCardsValidTx(championship.Id, user.Id, conn, tr);
             if(yellowCards.Count != 0)
             {
-                var previousMatch2 =  await GetMatchById(yellowCards[0].MatchId);
+                var previousMatch2 =  await GetMatchByIdTx(yellowCards[0].MatchId, conn, tr);
                 isNextMatch = CheckIfIsTheNextMatchToEliminations(previousMatch2, match, user);
                 if(yellowCards.Count == 3 && isNextMatch)
                 {
                     foreach (var YellowCard in yellowCards)
                     {
-                        await _dbService.EditData("UPDATE Fouls SET Valid = false WHERE Id = @id", 
-                            new {id = YellowCard.Id});
+                        await conn.ExecuteAsync("UPDATE Fouls SET Valid = false WHERE Id = @id", new {id = YellowCard.Id}, tr);
                     }
                     return;
                 }
                 isNextMatch = CheckIfIsTheNextMatchToLeagueSystem(previousMatch2, match, user, 2);
-                if(isNextMatch && yellowCards.Count == 3 && await CheckIfReceiveRedCardInLastMatch(yellowCards[0].MatchId, user.Id))
+                if(isNextMatch && yellowCards.Count == 3 && await CheckIfReceiveRedCardInLastMatchTx(yellowCards[0].MatchId, user.Id, conn, tr))
                 {
                     foreach (var card in yellowCards)
                     {
-                        await _dbService.EditData("UPDATE Fouls SET Valid = false WHERE Id = @id ", new {id = card.Id});
+                        await conn.ExecuteAsync("UPDATE Fouls SET Valid = false WHERE Id = @id ", new {id = card.Id}, tr);
                     }
                     return;
                 }
             }
         }
-
         else if(championship.Format == Enum.Format.GroupStage)
         {
-            var redCard = await GetRedCardValid(championship.Id, user.Id);
+            var redCard = await GetRedCardValidTx(championship.Id, user.Id, conn, tr);
             var isNextMatch = false;
             if(redCard is not null)
             {
-                var previousMatch = await GetMatchById(redCard.MatchId);
+                var previousMatch = await GetMatchByIdTx(redCard.MatchId, conn, tr);
                 isNextMatch = CheckIfIsTheNextMatchToLeagueSystem(previousMatch, match, user, 1);
 
                 if(isNextMatch)
                 {
-                    await _dbService.EditData("UPDATE Fouls SET Valid = false WHERE Id = @id", new {id = redCard.Id});
+                    await conn.ExecuteAsync("UPDATE Fouls SET Valid = false WHERE Id = @id", new {id = redCard.Id}, tr);
                     return;
                 }
-
             }
                
-            var yellowCards = await GetLastYellowCardsValid(championship.Id, user.Id);
+            var yellowCards = await GetLastYellowCardsValidTx(championship.Id, user.Id, conn, tr);
             if(yellowCards.Count != 0)
             {
-                var previousMatch2 =  await GetMatchById(yellowCards[0].MatchId);
+                var previousMatch2 =  await GetMatchByIdTx(yellowCards[0].MatchId, conn, tr);
                 isNextMatch = CheckIfIsTheNextMatchToLeagueSystem(previousMatch2, match, user, 1);
                 if(yellowCards.Count == 3 && isNextMatch)
                 {
                     foreach (var card in yellowCards)
                     {
-                        await _dbService.EditData("UPDATE Fouls SET Valid = false WHERE Id = @id ", new {id = card.Id});
+                        await conn.ExecuteAsync("UPDATE Fouls SET Valid = false WHERE Id = @id ", new {id = card.Id}, tr);
                     }
                     return;
                 }
                 isNextMatch = CheckIfIsTheNextMatchToLeagueSystem(previousMatch2, match, user, 2);
-                if(isNextMatch && yellowCards.Count == 3 && await CheckIfReceiveRedCardInLastMatch(yellowCards[0].MatchId, user.Id))
+                if(isNextMatch && yellowCards.Count == 3 && await CheckIfReceiveRedCardInLastMatchTx(yellowCards[0].MatchId, user.Id, conn, tr))
                 {
                     foreach (var card in yellowCards)
                     {
-                        await _dbService.EditData("UPDATE Fouls SET Valid = false WHERE Id = @id ", new {id = card.Id});
+                        await conn.ExecuteAsync("UPDATE Fouls SET Valid = false WHERE Id = @id ", new {id = card.Id}, tr);
                     }
                     return;
                 }
             } 
         }
-
         else
         {
-            var redCard = await GetRedCardValid(championship.Id, user.Id);
-            var yellowCards = await GetLastYellowCardsValid(championship.Id, user.Id);
+            var redCard = await GetRedCardValidTx(championship.Id, user.Id, conn, tr);
+            var yellowCards = await GetLastYellowCardsValidTx(championship.Id, user.Id, conn, tr);
             var isNextMatch = false;
             if(redCard is not null)
             {
-                var previousMatch = await GetMatchById(redCard.MatchId);
+                var previousMatch = await GetMatchByIdTx(redCard.MatchId, conn, tr);
                 isNextMatch = CheckIfIsTheNextMatchToLeagueSystem(previousMatch, match, user, 1);
                 if(isNextMatch)
                 {
-                    await _dbService.EditData("UPDATE Fouls SET Valid = false WHERE Id = @id", new {id = redCard.Id});
+                    await conn.ExecuteAsync("UPDATE Fouls SET Valid = false WHERE Id = @id", new {id = redCard.Id}, tr);
                     return;
                 }   
-                
             }
               
             if(yellowCards.Count != 0)
             {
-                var previousMatch2 =  await GetMatchById(yellowCards[0].MatchId);
+                var previousMatch2 =  await GetMatchByIdTx(yellowCards[0].MatchId, conn, tr);
                 isNextMatch = CheckIfIsTheNextMatchToLeagueSystem(previousMatch2, match, user, 1);
                 if(yellowCards.Count == 5 && isNextMatch)
                 {
                     foreach (var card in yellowCards)
                     {
-                        await _dbService.EditData("UPDATE Fouls SET Valid = false WHERE Id = @id ", new {id = card.Id});
+                        await conn.ExecuteAsync("UPDATE Fouls SET Valid = false WHERE Id = @id ", new {id = card.Id}, tr);
                     }
                     return;
                 }
 
                 isNextMatch = CheckIfIsTheNextMatchToLeagueSystem(previousMatch2, match, user, 2);
-                if(isNextMatch && yellowCards.Count == 5 && await CheckIfReceiveRedCardInLastMatch(yellowCards[0].MatchId, user.Id))
+                if(isNextMatch && yellowCards.Count == 5 && await CheckIfReceiveRedCardInLastMatchTx(yellowCards[0].MatchId, user.Id, conn, tr))
                 {
                     foreach (var card in yellowCards)
                     {
-                        await _dbService.EditData("UPDATE Fouls SET Valid = false WHERE Id = @id ", new {id = card.Id});
+                        await conn.ExecuteAsync("UPDATE Fouls SET Valid = false WHERE Id = @id ", new {id = card.Id}, tr);
                     }
                     return;
                 }
-                var redMatch = await GetRedMatchInvalid(user.Id, championship.Id);
+                var redMatch = await GetRedMatchInvalidTx(user.Id, championship.Id, conn, tr);
                 isNextMatch = CheckIfIsTheNextMatchToLeagueSystem(redMatch, match, user, 2);
                 if(isNextMatch && yellowCards.Count == 3)
                 {
                     foreach (var card in yellowCards)
                     {
-                        await _dbService.EditData("UPDATE Fouls SET Valid = false WHERE Id = @id ", new {id = card.Id});
+                        await conn.ExecuteAsync("UPDATE Fouls SET Valid = false WHERE Id = @id ", new {id = card.Id}, tr);
                     }
                     return;
                 }
             } 
         }
     }
-    private async Task InvalidingPlayerTempCards(PlayerTempProfile player, Championship championship, Match match)
+
+    private async Task InvalidingPlayerTempCardsTx(PlayerTempProfile player, Championship championship, Match match, NpgsqlConnection conn, NpgsqlTransaction tr)
     {
         if(match.Phase != 0)
         {
-            var redCard = await GetRedCardValid2(championship.Id, player.Id);
+            var redCard = await GetRedCardValid2Tx(championship.Id, player.Id, conn, tr);
             var isNextMatch = false;
             if(redCard is not null)
             {
-                var previousMatch = await GetMatchById(redCard.MatchId);
+                var previousMatch = await GetMatchByIdTx(redCard.MatchId, conn, tr);
                 isNextMatch = CheckIfIsTheNextMatchToEliminations(previousMatch, match, player);
 
                 if(isNextMatch)
                 {
-                    await _dbService.EditData("UPDATE Fouls SET Valid = false WHERE Id = @id", new {id = redCard.Id});
+                    await conn.ExecuteAsync("UPDATE Fouls SET Valid = false WHERE Id = @id", new {id = redCard.Id}, tr);
                     return;
                 }
             }
 
-            var yellowCards = await GetLastYellowCardsValid2(championship.Id, player.Id);
+            var yellowCards = await GetLastYellowCardsValid2Tx(championship.Id, player.Id, conn, tr);
             if(yellowCards.Count != 0)
             {
-                var previousMatch2 =  await GetMatchById(yellowCards[0].MatchId);
+                var previousMatch2 =  await GetMatchByIdTx(yellowCards[0].MatchId, conn, tr);
                 isNextMatch = CheckIfIsTheNextMatchToEliminations(previousMatch2, match, player);
                 if(yellowCards.Count == 3 && isNextMatch)
                 {
                     foreach (var YellowCard in yellowCards)
                     {
-                        await _dbService.EditData("UPDATE Fouls SET Valid = false WHERE Id = @id", 
-                            new {id = YellowCard.Id});
+                        await conn.ExecuteAsync("UPDATE Fouls SET Valid = false WHERE Id = @id", new {id = YellowCard.Id}, tr);
                     }
                     return;
                 }
                 isNextMatch = CheckIfIsTheNextMatchToLeagueSystem(previousMatch2, match, player, 2);
-                if(isNextMatch && yellowCards.Count == 3 && await CheckIfReceiveRedCardInLastMatch2(yellowCards[0].MatchId, player.Id))
+                if(isNextMatch && yellowCards.Count == 3 && await CheckIfReceiveRedCardInLastMatch2Tx(yellowCards[0].MatchId, player.Id, conn, tr))
                 {
                     foreach (var card in yellowCards)
                     {
-                        await _dbService.EditData("UPDATE Fouls SET Valid = false WHERE Id = @id ", new {id = card.Id});
+                        await conn.ExecuteAsync("UPDATE Fouls SET Valid = false WHERE Id = @id ", new {id = card.Id}, tr);
                     }
                     return;
                 }
             }
         }
-
         else if(championship.Format == Enum.Format.GroupStage)
         {
-            var redCard = await GetRedCardValid2(championship.Id, player.Id);
+            var redCard = await GetRedCardValid2Tx(championship.Id, player.Id, conn, tr);
             var isNextMatch = false;
             if(redCard is not null)
             {
-                var previousMatch = await GetMatchById(redCard.MatchId);
+                var previousMatch = await GetMatchByIdTx(redCard.MatchId, conn, tr);
                 isNextMatch = CheckIfIsTheNextMatchToLeagueSystem(previousMatch, match, player, 1);
 
                 if(isNextMatch)
                 {
-                    await _dbService.EditData("UPDATE Fouls SET Valid = false WHERE Id = @id", new {id = redCard.Id});
+                    await conn.ExecuteAsync("UPDATE Fouls SET Valid = false WHERE Id = @id", new {id = redCard.Id}, tr);
                     return;
                 }
             }
            
-            var yellowCards = await GetLastYellowCardsValid2(championship.Id, player.Id);
+            var yellowCards = await GetLastYellowCardsValid2Tx(championship.Id, player.Id, conn, tr);
             if(yellowCards.Count != 0)
             {
-                var previousMatch2 =  await GetMatchById(yellowCards[0].MatchId);
+                var previousMatch2 =  await GetMatchByIdTx(yellowCards[0].MatchId, conn, tr);
                 isNextMatch = CheckIfIsTheNextMatchToLeagueSystem(previousMatch2, match, player, 1);
                 if(yellowCards.Count == 3 && isNextMatch)
                 {
                     foreach (var card in yellowCards)
                     {
-                        await _dbService.EditData("UPDATE Fouls SET Valid = false WHERE Id = @id ", new {id = card.Id});
+                        await conn.ExecuteAsync("UPDATE Fouls SET Valid = false WHERE Id = @id ", new {id = card.Id}, tr);
                     }
                     return;
                 }
                 isNextMatch = CheckIfIsTheNextMatchToLeagueSystem(previousMatch2, match, player, 2);
-                if(isNextMatch && yellowCards.Count == 3 && await CheckIfReceiveRedCardInLastMatch2(yellowCards[0].MatchId, player.Id))
+                if(isNextMatch && yellowCards.Count == 3 && await CheckIfReceiveRedCardInLastMatch2Tx(yellowCards[0].MatchId, player.Id, conn, tr))
                 {
                     foreach (var card in yellowCards)
                     {
-                        await _dbService.EditData("UPDATE Fouls SET Valid = false WHERE Id = @id ", new {id = card.Id});
+                        await conn.ExecuteAsync("UPDATE Fouls SET Valid = false WHERE Id = @id ", new {id = card.Id}, tr);
                     }
                     return;
                 }
             }
         }
-
         else
         {
-            var redCard = await GetRedCardValid2(championship.Id, player.Id);
-            var yellowCards = await GetLastYellowCardsValid2(championship.Id, player.Id);
+            var redCard = await GetRedCardValid2Tx(championship.Id, player.Id, conn, tr);
+            var yellowCards = await GetLastYellowCardsValid2Tx(championship.Id, player.Id, conn, tr);
             var isNextMatch = false;
             if(redCard is not null)
             {
-                var previousMatch = await GetMatchById(redCard.MatchId);
+                var previousMatch = await GetMatchByIdTx(redCard.MatchId, conn, tr);
                 isNextMatch = CheckIfIsTheNextMatchToLeagueSystem(previousMatch, match, player, 1);
                 if(isNextMatch)
                 {
-                    await _dbService.EditData("UPDATE Fouls SET Valid = false WHERE Id = @id", new {id = redCard.Id});
+                    await conn.ExecuteAsync("UPDATE Fouls SET Valid = false WHERE Id = @id", new {id = redCard.Id}, tr);
                     return;
                 }
             }
           
             if(yellowCards.Count != 0)
             {
-                var previousMatch2 =  await GetMatchById(yellowCards[0].MatchId);
+                var previousMatch2 =  await GetMatchByIdTx(yellowCards[0].MatchId, conn, tr);
                 isNextMatch = CheckIfIsTheNextMatchToLeagueSystem(previousMatch2, match, player, 1);
                 if(yellowCards.Count == 5 && isNextMatch)
                 {
                     foreach (var card in yellowCards)
                     {
-                        await _dbService.EditData("UPDATE Fouls SET Valid = false WHERE Id = @id ", new {id = card.Id});
+                        await conn.ExecuteAsync("UPDATE Fouls SET Valid = false WHERE Id = @id ", new {id = card.Id}, tr);
                     }
                     return;
                 }
 
                 isNextMatch = CheckIfIsTheNextMatchToLeagueSystem(previousMatch2, match, player, 2);
-                if(isNextMatch && yellowCards.Count == 5 && await CheckIfReceiveRedCardInLastMatch2(yellowCards[0].MatchId, player.Id))
+                if(isNextMatch && yellowCards.Count == 5 && await CheckIfReceiveRedCardInLastMatch2Tx(yellowCards[0].MatchId, player.Id, conn, tr))
                 {
                     foreach (var card in yellowCards)
                     {
-                        await _dbService.EditData("UPDATE Fouls SET Valid = false WHERE Id = @id ", new {id = card.Id});
+                        await conn.ExecuteAsync("UPDATE Fouls SET Valid = false WHERE Id = @id ", new {id = card.Id}, tr);
                     }
                     return;
                 }
-                var redMatch = await GetRedMatchInvalid2(player.Id, championship.Id);
+                var redMatch = await GetRedMatchInvalid2Tx(player.Id, championship.Id, conn, tr);
                 isNextMatch = CheckIfIsTheNextMatchToLeagueSystem(redMatch, match, player, 2);
                 if(isNextMatch && yellowCards.Count == 3)
                 {
                     foreach (var card in yellowCards)
                     {
-                        await _dbService.EditData("UPDATE Fouls SET Valid = false WHERE Id = @id ", new {id = card.Id});
+                        await conn.ExecuteAsync("UPDATE Fouls SET Valid = false WHERE Id = @id ", new {id = card.Id}, tr);
                     }
                     return;
                 }
             }
         }
     }
-    private async Task<List<Foul>> GetLastYellowCardsValid(int championshipId, Guid userId)
-        => await _dbService.GetAll<Foul>(
+
+    private async Task<List<Foul>> GetLastYellowCardsValidTx(int championshipId, Guid userId, NpgsqlConnection conn, NpgsqlTransaction tr)
+        => (await conn.QueryAsync<Foul>(
             @"SELECT f.* FROM Fouls f
             JOIN Matches m ON f.MatchId = m.Id
             WHERE m.ChampionshipId = @championshipId AND 
             f.PlayerId = @userId AND f.Considered = true AND 
             f.Valid = true AND f.YellowCard = true 
             ORDER BY f.Id DESC", 
-            new {championshipId, userId});
-    private async Task<List<Foul>> GetLastYellowCardsValid2(int championshipId, Guid userId)
-        => await _dbService.GetAll<Foul>(
+            new {championshipId, userId}, tr)).ToList();
+
+    private async Task<List<Foul>> GetLastYellowCardsValid2Tx(int championshipId, Guid userId, NpgsqlConnection conn, NpgsqlTransaction tr)
+        => (await conn.QueryAsync<Foul>(
             @"SELECT f.* FROM Fouls f
             JOIN Matches m ON f.MatchId = m.Id
             WHERE m.ChampionshipId = @championshipId AND 
             f.PlayerTempId = @userId AND f.Considered = true AND 
             f.Valid = true AND f.YellowCard = true 
             ORDER BY f.Id DESC", 
-            new {championshipId, userId});
-    private async Task<Foul> GetRedCardValid(int championshipId, Guid userId)
-        => await _dbService.GetAsync<Foul>(
+            new {championshipId, userId}, tr)).ToList();
+
+    private async Task<Foul> GetRedCardValidTx(int championshipId, Guid userId, NpgsqlConnection conn, NpgsqlTransaction tr)
+        => await conn.QueryFirstOrDefaultAsync<Foul>(
             @"SELECT f.* FROM Fouls f
             JOIN Matches m ON f.MatchId = m.Id
             WHERE m.ChampionshipId = @championshipId AND 
             f.PlayerId = @userId AND 
             f.YellowCard = false AND f.Valid = true", 
-        new {championshipId, userId});
-    private async Task<Foul> GetRedCardValid2(int championshipId, Guid playerId)
-        => await _dbService.GetAsync<Foul>(
+            new {championshipId, userId}, tr);
+
+    private async Task<Foul> GetRedCardValid2Tx(int championshipId, Guid playerId, NpgsqlConnection conn, NpgsqlTransaction tr)
+        => await conn.QueryFirstOrDefaultAsync<Foul>(
             @"SELECT f.* FROM Fouls f
             JOIN Matches m ON f.MatchId = m.Id
             WHERE m.ChampionshipId = @championshipId 
             AND f.PlayerTempId = @playerId 
             AND f.YellowCard = false AND f.Valid = true", 
+            new {championshipId, playerId}, tr);
+
+    private async Task<Match> GetMatchByIdTx(int matchId, NpgsqlConnection conn, NpgsqlTransaction tr)
+        => await conn.QueryFirstOrDefaultAsync<Match>("SELECT * FROM matches WHERE id = @matchId", new{matchId}, tr);
+
+    private async Task<bool> CheckIfReceiveRedCardInLastMatchTx(int matchId, Guid userId, NpgsqlConnection conn, NpgsqlTransaction tr)
+        => await conn.ExecuteScalarAsync<bool>("SELECT EXISTS(SELECT * FROM Fouls WHERE MatchId = @matchId AND YellowCard = false AND Valid = false AND PlayerId = @userId)", new {matchId, userId}, tr);
+    
+    private async Task<bool> CheckIfReceiveRedCardInLastMatch2Tx(int matchId, Guid tempId, NpgsqlConnection conn, NpgsqlTransaction tr)
+        => await conn.ExecuteScalarAsync<bool>("SELECT EXISTS(SELECT * FROM Fouls WHERE MatchId = @matchId AND YellowCard = false AND Valid = false AND PlayerTempId = @tempId)", new {matchId, tempId}, tr);
+
+    private async Task<Match> GetRedMatchInvalidTx(Guid userId, int championshipId, NpgsqlConnection conn, NpgsqlTransaction tr)
+        => await conn.QueryFirstOrDefaultAsync<Match>(
+        @"SELECT m.* FROM Matches m
+        JOIN Fouls f ON f.MatchId = m.Id
+        WHERE f.PlayerId = @userId AND m.ChampionshipId = @championshipId AND f.YellowCard = false AND f.Valid = false", 
+        new {userId, championshipId}, tr);
+
+    private async Task<Match> GetRedMatchInvalid2Tx(Guid playerId, int championshipId, NpgsqlConnection conn, NpgsqlTransaction tr)
+        => await conn.QueryFirstOrDefaultAsync<Match>(
+        @"SELECT m.* FROM Matches m
+        JOIN Fouls f ON f.MatchId = m.Id
+        WHERE f.PlayerTempId = @playerId AND m.ChampionshipId = @championshipId AND f.YellowCard = false AND f.Valid = false", 
+        new {playerId, championshipId}, tr);
+
+    // Legacy Support para as leituras que não precisam da transação
+    private async Task<List<Foul>> GetLastYellowCardsValid(int championshipId, Guid userId)
+        => await _dbService.GetAll<Foul>(
+            @"SELECT f.* FROM Fouls f JOIN Matches m ON f.MatchId = m.Id WHERE m.ChampionshipId = @championshipId AND f.PlayerId = @userId AND f.Considered = true AND f.Valid = true AND f.YellowCard = true ORDER BY f.Id DESC", 
+            new {championshipId, userId});
+    private async Task<List<Foul>> GetLastYellowCardsValid2(int championshipId, Guid userId)
+        => await _dbService.GetAll<Foul>(
+            @"SELECT f.* FROM Fouls f JOIN Matches m ON f.MatchId = m.Id WHERE m.ChampionshipId = @championshipId AND f.PlayerTempId = @userId AND f.Considered = true AND f.Valid = true AND f.YellowCard = true ORDER BY f.Id DESC", 
+            new {championshipId, userId});
+    private async Task<Foul> GetRedCardValid(int championshipId, Guid userId)
+        => await _dbService.GetAsync<Foul>(
+            @"SELECT f.* FROM Fouls f JOIN Matches m ON f.MatchId = m.Id WHERE m.ChampionshipId = @championshipId AND f.PlayerId = @userId AND f.YellowCard = false AND f.Valid = true", 
+            new {championshipId, userId});
+    private async Task<Foul> GetRedCardValid2(int championshipId, Guid playerId)
+        => await _dbService.GetAsync<Foul>(
+            @"SELECT f.* FROM Fouls f JOIN Matches m ON f.MatchId = m.Id WHERE m.ChampionshipId = @championshipId AND f.PlayerTempId = @playerId AND f.YellowCard = false AND f.Valid = true", 
             new {championshipId, playerId});
+    private async Task<Match> GetRedMatchInvalid2(Guid playerId, int championshipId)
+        => await _dbService.GetAsync<Match>(
+        @"SELECT m.* FROM Matches m JOIN Fouls f ON f.MatchId = m.Id WHERE f.PlayerTempId = @playerId AND m.ChampionshipId = @championshipId AND f.YellowCard = false AND f.Valid = false", 
+        new {playerId, championshipId});
+    private async Task<Match> GetRedMatchInvalid(Guid userId, int championshipId)
+        => await _dbService.GetAsync<Match>(
+        @"SELECT m.* FROM Matches m JOIN Fouls f ON f.MatchId = m.Id WHERE f.PlayerId = @userId AND m.ChampionshipId = @championshipId AND f.YellowCard = false AND f.Valid = false", 
+        new {userId, championshipId});
+    private async Task<bool> CheckIfReceiveRedCardInLastMatch(int matchId, Guid userId)
+        => await _dbService.GetAsync<bool>("SELECT EXISTS(SELECT * FROM Fouls WHERE MatchId = @matchId AND YellowCard = false AND Valid = false AND PlayerId = @userId)", new {matchId, userId});
+    private async Task<bool> CheckIfReceiveRedCardInLastMatch2(int matchId, Guid tempId)
+        => await _dbService.GetAsync<bool>("SELECT EXISTS(SELECT * FROM Fouls WHERE MatchId = @matchId AND YellowCard = false AND Valid = false AND PlayerTempId = @tempId)", new {matchId, tempId});
+
     private bool CheckIfIsTheNextMatchToEliminations(Match previousMatch, Match nextMatch, User user)
     {
         var nextPhase = previousMatch?.Phase + 1;
@@ -461,73 +488,52 @@ public class MatchService
     }
     private async Task<bool> CheckIfFirstMatchHasNotFinished(int matchId)
         => await _dbService.GetAsync<bool>("SELECT EXISTS(SELECT * FROM matches WHERE Id = @matchId AND (WINNER IS NULL AND Tied = false))", new {matchId});
+    
+    // Método original mantido para compatibilidade com Vôlei / GoalService
     private async Task<int> DefineWinner(int teamId, int matchId)
     {
         if(teamId == 0)
         {
             await UpdateMatchToDefineTie(matchId);
-            var match = await GetMatchById(matchId);
-            var championship = await GetChampionshipByMatchId(matchId);
-            if(await CheckIfMatchesOfCurrentPhaseHaveEnded(match.ChampionshipId, match.Phase) && match.Phase != Phase.Finals)
-            {
-                var newPhase = match.Phase + 1;
-
-                if((newPhase != Phase.Finals && championship.DoubleMatchEliminations) || (newPhase == Phase.Finals && championship.FinalDoubleMatch))
-                {
-                    var winners = await GetWinners(championship, match.Phase); 
-                    for (int i = 0; i <= winners.Count() / 2; i = i + 2)
-                    {
-                        var newMatch = new Match(match.ChampionshipId, winners[i], winners[i+1], newPhase);
-                        var previousMatch = await CreateMatchSend(newMatch);
-                        var newMatch2 = new Match(match.ChampionshipId, winners[i+1], winners[i], newPhase, previousMatch.Id);
-                        await CreateMatchSend2(newMatch2);
-                    }
-                }
-
-                else
-                {
-                    var winners = await GetWinners(championship, match.Phase);
-                    for (int i = 0; i <= winners.Count() / 2; i = i + 2)
-                    {
-                        var newMatch = new Match(match.ChampionshipId, winners[i], winners[i+1], newPhase);
-                        await CreateMatchSend(newMatch);
-                    }
-                }
-                
-            }
-            return matchId;
+            return await ProgressionKnockout(0, matchId);
         }
-        var id = await UpdateMatchToDefineWinner(teamId, matchId);
-        var match2 = await GetMatchById(matchId);
-        var championship2 = await GetChampionshipByMatchId(matchId);
-        if(await CheckIfMatchesOfCurrentPhaseHaveEnded(match2.ChampionshipId, match2.Phase) && match2.Phase != Phase.Finals)
-        {
-            var newPhase = match2.Phase + 1;
+        await UpdateMatchToDefineWinner(teamId, matchId);
+        return await ProgressionKnockout(teamId, matchId);
+    }
 
-            if((newPhase != Phase.Finals && championship2.DoubleMatchEliminations) || (newPhase == Phase.Finals && championship2.FinalDoubleMatch))
-		    {
-                var winners = await GetWinners(championship2, match2.Phase); 
-                for (int i = 0; i <= winners.Count()-2; i = i + 2)
+    private async Task<int> ProgressionKnockout(int teamId, int matchId)
+    {
+        var match = await GetMatchById(matchId);
+        var championship = await GetChampionshipByMatchId(matchId);
+        if(await CheckIfMatchesOfCurrentPhaseHaveEnded(match.ChampionshipId, match.Phase) && match.Phase != Phase.Finals)
+        {
+            var newPhase = match.Phase + 1;
+
+            if((newPhase != Phase.Finals && championship.DoubleMatchEliminations) || (newPhase == Phase.Finals && championship.FinalDoubleMatch))
+            {
+                var winners = await GetWinners(championship, match.Phase); 
+                for (int i = 0; i <= winners.Count() / 2; i = i + 2)
                 {
-                    var newMatch = new Match(match2.ChampionshipId, winners[i], winners[i+1], newPhase);
+                    var newMatch = new Match(match.ChampionshipId, winners[i], winners[i+1], newPhase);
                     var previousMatch = await CreateMatchSend(newMatch);
-                    var newMatch2 = new Match(match2.ChampionshipId, winners[i+1],  winners[i], newPhase, previousMatch.Id);
+                    var newMatch2 = new Match(match.ChampionshipId, winners[i+1], winners[i], newPhase, previousMatch.Id);
                     await CreateMatchSend2(newMatch2);
                 }
             }
-
             else
             {
-                var winners = await GetWinners(championship2, match2.Phase); 
-                for (int i = 0; i <= winners.Count()-2; i = i + 2)
+                var winners = await GetWinners(championship, match.Phase);
+                for (int i = 0; i <= winners.Count() / 2; i = i + 2)
                 {
-                    var newMatch = new Match(match2.ChampionshipId, winners[i], winners[i+1], newPhase);
+                    var newMatch = new Match(match.ChampionshipId, winners[i], winners[i+1], newPhase);
                     await CreateMatchSend(newMatch);
                 }
             }
+            
         }
-        return id;
+        return matchId;
     }
+
     private async Task<List<int>> GetWinners(Championship championship, Phase phase)
     {
         var winners = new List<int>();
@@ -628,64 +634,51 @@ public class MatchService
     {
         var match = await GetMatchById(matchId);
         var championship = await GetChampionshipByMatchId(matchId);
-        if(match is null && valid)
-        {
-            throw new ApplicationException("Partida passada não existe.");
-        }
-        if(await DepartureDateNotSet(matchId) && valid)
-        {
-            throw new ApplicationException("Data da partida não definida.");
-        }
-        if(match.Date.ToUniversalTime() >= DateTime.UtcNow && valid)
-        {
-            throw new ApplicationException("Partida ainda não inciou");
-        }
-        if(match.Winner != 0 && valid)
-        {
-            throw new ApplicationException("Partida já possui um vencedor.");
-        }
-        if(match.Tied && valid)
-        {
-            throw new ApplicationException("Partida já terminou em empate.");
-        }
-        if((match.HomeUniform is null || match.VisitorUniform is null) && valid)
-            throw new ApplicationException("É necessário definir os uniformes das equipes antes");
-        
-        if(match.Road is null && valid)
-            throw new ApplicationException("É necessário definir o local da partida antes");
-        if(await CheckIfLastMatchHasEnded(match) && valid)
-            throw new ApplicationException("Partida anterior de um dos times anda não foi finalizada");
+        if(match is null && valid) throw new ApplicationException("Partida passada não existe.");
+        if(await DepartureDateNotSet(matchId) && valid) throw new ApplicationException("Data da partida não definida.");
+        if(match.Date.ToUniversalTime() >= DateTime.UtcNow && valid) throw new ApplicationException("Partida ainda não inciou");
+        if(match.Winner != 0 && valid) throw new ApplicationException("Partida já possui um vencedor.");
+        if(match.Tied && valid) throw new ApplicationException("Partida já terminou em empate.");
+        if((match.HomeUniform is null || match.VisitorUniform is null) && valid) throw new ApplicationException("É necessário definir os uniformes das equipes antes");
+        if(match.Road is null && valid) throw new ApplicationException("É necessário definir o local da partida antes");
+        if(await CheckIfLastMatchHasEnded(match) && valid) throw new ApplicationException("Partida anterior de um dos times anda não foi finalizada");
 
         var visitorPoints = await GetPointsFromTeamById(matchId, match.Visitor);
         var homePoints = await GetPointsFromTeamById(matchId, match.Home);
-        if(homePoints > visitorPoints)
-        {
-            await DefineWinnerToLeagueSystem(match.Home, match);
-        }
-        else if(homePoints < visitorPoints)
-        {
-            await DefineWinnerToLeagueSystem(match.Visitor, match);
-        } 
-        else 
-        {
-            await DefineWinnerToLeagueSystem(0, match);
-        }
+        int winnerTeamId = 0;
+
+        if(homePoints > visitorPoints) winnerTeamId = match.Home;
+        else if(homePoints < visitorPoints) winnerTeamId = match.Visitor;
 
         var users = await GetAllUsersByTeamsId(match.Home, match.Visitor);
         var tempUsers = await GetAllTempProfileByTeamsId(match.Home, match.Visitor);
 
-        foreach (var user in users)
+        // ====================================================================
+        // TRANSAÇÃO ATÔMICA
+        // ====================================================================
+        await _dbService.ExecuteInTransactionAsync(async (conn, tr) => 
         {
-            await InvalidingUserCards(user, championship, match);
-        }
+            if (winnerTeamId == 0)
+                await conn.ExecuteAsync("UPDATE matches SET Tied = true, version = version + 1 WHERE id = @matchId", new { matchId = match.Id }, tr);
+            else
+                await conn.ExecuteAsync("UPDATE matches SET Winner = @teamId, version = version + 1 WHERE id = @matchId", new { teamId = winnerTeamId, matchId = match.Id }, tr);
 
-        foreach (var temp in tempUsers)
-        {
-            await InvalidingPlayerTempCards(temp, championship, match);
-        }
-        await DispatchMatchEndedEvent(match.Id, championship.Id);
+            foreach (var user in users)
+                await InvalidingUserCardsTx(user, championship, match, conn, tr);
 
+            foreach (var temp in tempUsers)
+                await InvalidingPlayerTempCardsTx(temp, championship, match, conn, tr);
+
+            await DispatchMatchEndedEventTx(match.Id, championship.Id, conn, tr);
+            return true;
+        });
+
+        // ====================================================================
+        // FORA DA TRANSAÇÃO: Lógica de progressão síncrona
+        // ====================================================================
+        await ProgressionLeague(winnerTeamId, match);
     }
+
     private async Task<bool> CheckIfLastMatchHasEnded(Match match)
         => await _dbService.GetAsync<bool>(
             @"SELECT EXISTS(
@@ -696,13 +689,25 @@ public class MatchService
                 Winner IS NULL AND Tied = false
             )",
             new {championshipId = match.ChampionshipId, round = match.Round-1, team1 = match.Home, team2 = match.Visitor});
+    
     private async Task<bool> CheckIfThereIsTie(int matchId)
         => await _dbService.GetAsync<bool>("SELECT EXISTS(SELECT * FROM matches WHERE Id = @matchId AND Tied = true)", new {matchId});
+    
     private async Task<int> DefineWinnerToLeagueSystem(int winnerTeamId, Match match)
     {
         if(winnerTeamId == 0)
         {
             await UpdateMatchToDefineTie(match.Id);
+            return await ProgressionLeague(0, match);
+        }
+        await UpdateMatchToDefineWinner(winnerTeamId, match.Id);
+        return await ProgressionLeague(winnerTeamId, match);
+    }
+
+    private async Task<int> ProgressionLeague(int winnerTeamId, Match match)
+    {
+        if(winnerTeamId == 0)
+        {
             var homeClassificationId = await AssignPoints(match.Home, match.ChampionshipId, 1);
             var visitorClassificationId = await AssignPoints(match.Visitor, match.ChampionshipId, 1);
             var homeClassification = await GetClassificationById(homeClassificationId);
@@ -723,7 +728,6 @@ public class MatchService
             return winnerTeamId;
         }
 
-        await UpdateMatchToDefineWinner(winnerTeamId, match.Id);
         var winnerClassificationId = await AssignPoints(winnerTeamId, match.ChampionshipId, 3);
         var winnerClassification = await GetClassificationById(winnerClassificationId);
         var classifications3 = await PickUpTeamsToChangePositions(
@@ -734,6 +738,7 @@ public class MatchService
         await ChangePosition(classifications3, winnerClassification);
         return winnerTeamId;
     }
+
     private async Task<int> UpdateMatchToDefineWinner(int teamId, int matchId)
     {
         if(teamId == 0)
@@ -1120,72 +1125,56 @@ public class MatchService
     {
         var match = await GetMatchById(matchId);
         var championship = await GetChampionshipByMatchId(matchId);
-        if(match is null && valid)
-        {
-            throw new ApplicationException("Partida passada não existe.");
-        }
-        if(await DepartureDateNotSet(matchId) && valid)
-        {
-            throw new ApplicationException("Data da partida não definida.");
-        }
-        if(match.Date.ToUniversalTime() >= DateTime.UtcNow && valid)
-        {
-            throw new ApplicationException("Partida ainda não inciou");
-        }
-        if(match.Winner != 0 && valid)
-        {
-            throw new ApplicationException("Partida já possui um vencedor.");
-        }
-        if(match.Tied && valid)
-        {
-            throw new ApplicationException("Partida já terminou em empate.");
-        }
-
-        if((match.HomeUniform is null || match.VisitorUniform is null) && valid)
-            throw new ApplicationException("É necessário definir os uniformes das equipes antes");
-        
-        if (match.Road is null && valid)
-            throw new ApplicationException("É necessário definir o local da partida antes antes");
-        
-        if(await CheckIfLastMatchHasEnded(match) && valid)
-            throw new ApplicationException("Partida anterior de um dos times anda não foi finalizada");
+        if(match is null && valid) throw new ApplicationException("Partida passada não existe.");
+        if(await DepartureDateNotSet(matchId) && valid) throw new ApplicationException("Data da partida não definida.");
+        if(match.Date.ToUniversalTime() >= DateTime.UtcNow && valid) throw new ApplicationException("Partida ainda não inciou");
+        if(match.Winner != 0 && valid) throw new ApplicationException("Partida já possui um vencedor.");
+        if(match.Tied && valid) throw new ApplicationException("Partida já terminou em empate.");
+        if((match.HomeUniform is null || match.VisitorUniform is null) && valid) throw new ApplicationException("É necessário definir os uniformes das equipes antes");
+        if (match.Road is null && valid) throw new ApplicationException("É necessário definir o local da partida antes antes");
+        if(await CheckIfLastMatchHasEnded(match) && valid) throw new ApplicationException("Partida anterior de um dos times anda não foi finalizada");
 
         var visitorPoints = await GetPointsFromTeamById(matchId, match.Visitor);
         var homePoints = await GetPointsFromTeamById(matchId, match.Home);
-        if(homePoints > visitorPoints)
-        {
-            await DefineWinnerToGroupStage(match.Home, match);
-        }
-        else if(homePoints < visitorPoints)
-        {
-            await DefineWinnerToGroupStage(match.Visitor, match);
-        } 
-        else 
-        {
-            await DefineWinnerToGroupStage(0, match);
-        }
-
-        if(!await CheckIfGroupStageEnded(match.ChampionshipId))
-        {
-            var classifications = await _dbService.GetAll<Classification>("SELECT * FROM classifications WHERE ChampionshipId = @championshipId ORDER BY Id", 
-            new {match.ChampionshipId});
-            var teamsId =  classifications.Where(c => c.Position == 1 || c.Position == 2).OrderBy(c => c.Position).Select(c => c.TeamId).ToList();   
-            await _bracketingService.CreateKnockoutToGroupStageValidationAsync(teamsId, match.ChampionshipId);
-        }
+        int winnerTeamId = 0;
+        
+        if(homePoints > visitorPoints) winnerTeamId = match.Home;
+        else if(homePoints < visitorPoints) winnerTeamId = match.Visitor;
 
         var users = await GetAllUsersByTeamsId(match.Home, match.Visitor);
         var tempUsers = await GetAllTempProfileByTeamsId(match.Home, match.Visitor);
 
-        foreach (var user in users)
+        // ====================================================================
+        // TRANSAÇÃO ATÔMICA
+        // ====================================================================
+        await _dbService.ExecuteInTransactionAsync(async (conn, tr) => 
         {
-            await InvalidingUserCards(user, championship, match);
-        }
+            if (winnerTeamId == 0)
+                await conn.ExecuteAsync("UPDATE matches SET Tied = true, version = version + 1 WHERE id = @matchId", new { matchId = match.Id }, tr);
+            else
+                await conn.ExecuteAsync("UPDATE matches SET Winner = @teamId, version = version + 1 WHERE id = @matchId", new { teamId = winnerTeamId, matchId = match.Id }, tr);
 
-        foreach (var temp in tempUsers)
+            foreach (var user in users)
+                await InvalidingUserCardsTx(user, championship, match, conn, tr);
+
+            foreach (var temp in tempUsers)
+                await InvalidingPlayerTempCardsTx(temp, championship, match, conn, tr);
+            
+            await DispatchMatchEndedEventTx(match.Id, championship.Id, conn, tr);
+            return true;
+        });
+
+        // ====================================================================
+        // FORA DA TRANSAÇÃO: Lógica de progressão síncrona
+        // ====================================================================
+        await ProgressionGroup(winnerTeamId, match);
+
+        if(!await CheckIfGroupStageEnded(match.ChampionshipId))
         {
-            await InvalidingPlayerTempCards(temp, championship, match);
+            var classifications = await _dbService.GetAll<Classification>("SELECT * FROM classifications WHERE ChampionshipId = @championshipId ORDER BY Id", new {match.ChampionshipId});
+            var teamsId =  classifications.Where(c => c.Position == 1 || c.Position == 2).OrderBy(c => c.Position).Select(c => c.TeamId).ToList();   
+            await _bracketingService.CreateKnockoutToGroupStageValidationAsync(teamsId, match.ChampionshipId);
         }
-        await DispatchMatchEndedEvent(match.Id, championship.Id);
     }
 
     private async Task<bool> CheckIfGroupStageEnded(int championshipId)
@@ -1197,6 +1186,16 @@ public class MatchService
         if(winnerTeamId == 0)
         {
             await UpdateMatchToDefineTie(match.Id);
+            return await ProgressionGroup(0, match);
+        }
+        await UpdateMatchToDefineWinner(winnerTeamId, match.Id);
+        return await ProgressionGroup(winnerTeamId, match);
+    }
+
+    private async Task<int> ProgressionGroup(int winnerTeamId, Match match)
+    {
+        if(winnerTeamId == 0)
+        {
             var homeClassificationId = await AssignPoints(match.Home, match.ChampionshipId, 1);
             var visitorClassificationId = await AssignPoints(match.Visitor, match.ChampionshipId, 1);
             var homeClassification = await GetClassificationById(homeClassificationId);
@@ -1221,7 +1220,6 @@ public class MatchService
             return winnerTeamId;
         }
 
-        await UpdateMatchToDefineWinner(winnerTeamId, match.Id);
         var winnerClassificationId = await AssignPoints(winnerTeamId, match.ChampionshipId, 3);
         var winnerClassification = await GetClassificationById(winnerClassificationId);
         var winnerGroup = await GetTeamsInGroup(winnerTeamId, match.ChampionshipId);
@@ -1316,6 +1314,7 @@ public class MatchService
     }
     private async Task<bool> CheckIfUniformBelongsToTeam(int teamId, string uniform)
         => await _dbService.GetAsync<bool>("SELECT EXISTS(SELECT * FROM teams WHERE Id = @teamId AND (UniformHome = @uniform OR UniformAway = @uniform))", new {teamId, uniform});
+    
     private async Task UpdateSend(Match match)
         => await _dbService.ExecuteInTransactionAsync(async (connection, transaction) =>
         {
@@ -1341,6 +1340,7 @@ public class MatchService
 
             return updatedId.Value;
         });
+
     public async Task ActiveProrrogationValidationAsync(int matchId)
     {
         var match = await GetMatchById(matchId);
@@ -1388,6 +1388,7 @@ public class MatchService
         
         await _dbService.EditData("UPDATE Matches SET Prorrogation = true, version = version + 1 WHERE id=@matchId", new {matchId});
     }
+
     public async Task<MatchDTO> GetMatchByIdValidation(int matchId)
     {
         var match = await GetMatchById(matchId);
@@ -1797,22 +1798,6 @@ public class MatchService
             }
         }
 	}
-    private async Task<Match> GetRedMatchInvalid2(Guid playerId, int championshipId)
-        => await _dbService.GetAsync<Match>(
-        @"SELECT m.* FROM Matches m
-        JOIN Fouls f ON f.MatchId = m.Id
-        WHERE f.PlayerTempId = @playerId AND m.ChampionshipId = @championshipId AND f.YellowCard = false AND f.Valid = false", 
-        new {playerId, championshipId});
-    private async Task<Match> GetRedMatchInvalid(Guid userId, int championshipId)
-        => await _dbService.GetAsync<Match>(
-        @"SELECT m.* FROM Matches m
-        JOIN Fouls f ON f.MatchId = m.Id
-        WHERE f.PlayerId = @userId AND m.ChampionshipId = @championshipId AND f.YellowCard = false AND f.Valid = false", 
-        new {userId, championshipId});
-    private async Task<bool> CheckIfReceiveRedCardInLastMatch(int matchId, Guid userId)
-        => await _dbService.GetAsync<bool>("SELECT EXISTS(SELECT * FROM Fouls WHERE MatchId = @matchId AND YellowCard = false AND Valid = false AND PlayerId = @userId)", new {matchId, userId});
-    private async Task<bool> CheckIfReceiveRedCardInLastMatch2(int matchId, Guid tempId)
-        => await _dbService.GetAsync<bool>("SELECT EXISTS(SELECT * FROM Fouls WHERE MatchId = @matchId AND YellowCard = false AND Valid = false AND PlayerTempId = @tempId)", new {matchId, tempId});
     private async Task<List<User>> GetPlayersOfteamSend(int id) =>
 		await _dbService.GetAll<User>(
 			@"
@@ -2241,18 +2226,11 @@ public class MatchService
         await _dbService.EditData("UPDATE Matches SET Penalties = true, version = version + 1 WHERE id=@matchId", new {matchId});
     }
 
-    private async Task DispatchMatchEndedEvent(int matchId, int championshipId)
+    private async Task DispatchMatchEndedEventTx(int matchId, int championshipId, NpgsqlConnection conn, NpgsqlTransaction tr)
     {
-        var payloadJson = JsonSerializer.Serialize(new
-        {
-            matchId,
-            championshipId,
-            occurredAtUtc = DateTime.UtcNow
-        });
-
-        await _dbService.EditData(
+        var payloadJson = JsonSerializer.Serialize(new { matchId, championshipId, occurredAtUtc = DateTime.UtcNow });
+        await conn.ExecuteAsync(
             "INSERT INTO outbox_events (event_type, payload_json, occurred_at, status) VALUES (@eventType, @payloadJson::jsonb, @occurredAtUtc, 'Pending')",
-            new { eventType = "match.ended", payloadJson, occurredAtUtc = DateTime.UtcNow });
+            new { eventType = "match.ended", payloadJson, occurredAtUtc = DateTime.UtcNow }, tr);
     }
-      
 }

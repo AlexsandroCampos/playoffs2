@@ -1,5 +1,6 @@
 using RabbitMQ.Client;
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace PlayOffsApi.Services
@@ -21,6 +22,9 @@ namespace PlayOffsApi.Services
         private readonly string _exchangeName = "playoffs-exchange";
         private readonly string _queueName = "playoffs-queue";
         private readonly string _routingKey = "playoffs.event";
+        
+        // Protege contra recriação paralela da conexão
+        private readonly SemaphoreSlim _connectionLock = new(1, 1);
 
         private RabbitMqService(string hostName, int port, string userName, string password)
         {
@@ -39,12 +43,16 @@ namespace PlayOffsApi.Services
 
         private async Task InitializeAsync()
         {
+            await CleanupAsync(); // Garante que limpamos o lixo antes de tentar de novo
+
             var factory = new ConnectionFactory() 
             { 
                 HostName = _hostName, 
                 Port = _port,
                 UserName = _userName, 
-                Password = _password 
+                Password = _password,
+                AutomaticRecoveryEnabled = true, // Opcional, ajuda em pequenas quedas, mas nossa lógica abaixo é mais robusta
+                NetworkRecoveryInterval = TimeSpan.FromSeconds(5)
             };
 
             _connection = await factory.CreateConnectionAsync();
@@ -72,12 +80,40 @@ namespace PlayOffsApi.Services
                 exchange: _exchangeName,
                 routingKey: _routingKey
             );
+        }
 
-            await Task.CompletedTask;
+        private async Task EnsureConnectionAsync()
+        {
+            if (_channel != null && _channel.IsOpen)
+                return;
+
+            await _connectionLock.WaitAsync();
+            try
+            {
+                // Double-check
+                if (_channel != null && _channel.IsOpen)
+                    return;
+
+                await InitializeAsync();
+            }
+            catch (RabbitMQ.Client.Exceptions.BrokerUnreachableException ex)
+            {
+                // Se não conseguir alcançar o broker durante a tentativa de reconexão,
+                // embrulha numa IOException para que o OutboxPublisherHostedService
+                // a classifique como falha de infraestrutura (falha transitória).
+                throw new System.IO.IOException("Falha ao tentar restabelecer conexão com o RabbitMQ.", ex);
+            }
+            finally
+            {
+                _connectionLock.Release();
+            }
         }
 
         public async Task PublishMessageAsync(string message)
         {
+            // Auto-Cura: Garante que a conexão está viva antes de publicar
+            await EnsureConnectionAsync();
+
             var body = System.Text.Encoding.UTF8.GetBytes(message);
 
             var properties = new BasicProperties
@@ -94,19 +130,34 @@ namespace PlayOffsApi.Services
             );
         }
 
+        private async Task CleanupAsync()
+        {
+            try
+            {
+                if (_channel != null)
+                {
+                    await _channel.CloseAsync();
+                    _channel.Dispose();
+                    _channel = null;
+                }
+
+                if (_connection != null)
+                {
+                    await _connection.CloseAsync();
+                    _connection.Dispose();
+                    _connection = null;
+                }
+            }
+            catch
+            {
+                // Ignorar erros durante o cleanup
+            }
+        }
+
         public async Task DisposeAsync()
         {
-            if (_channel != null)
-            {
-                await _channel.CloseAsync();
-                _channel.Dispose();
-            }
-
-            if (_connection != null)
-            {
-                await _connection.CloseAsync();
-                _connection.Dispose();
-            }
+            await CleanupAsync();
+            _connectionLock.Dispose();
         }
     }
 }
